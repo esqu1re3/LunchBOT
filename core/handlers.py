@@ -10,6 +10,40 @@ from models.transaction import Transaction
 from sqlalchemy.orm import joinedload
 from datetime import datetime
 from aiogram import Router
+from aiogram.utils.keyboard import InlineKeyboardBuilder
+from aiogram.dispatcher.middlewares.base import BaseMiddleware
+from typing import Callable, Dict, Any, Awaitable
+
+# --- FSM для заказа блюд ---
+from aiogram.fsm.state import State, StatesGroup
+class OrderFood(StatesGroup):
+    choosing_restaurant = State()
+    choosing_dishes = State()
+
+# --- /restaurants ---
+RESTAURANTS = {
+    "kfc": "KFC",
+    "mcdonalds": "McDonald's",
+    "burgerking": "Burger King"
+}
+# Пример меню с ценами
+RESTAURANT_MENUS = {
+    "kfc": [
+        ("Бургер", 150),
+        ("Картошка", 70),
+        ("Кола", 60)
+    ],
+    "mcdonalds": [
+        ("Биг Мак", 200),
+        ("Картошка фри", 80),
+        ("Кока-кола", 65)
+    ],
+    "burgerking": [
+        ("Воппер", 180),
+        ("Наггетсы", 90),
+        ("Пепси", 60)
+    ]
+}
 
 router = Router()
 
@@ -56,6 +90,7 @@ async def cmd_help(message: types.Message):
 /history — история транзакций
 /report — отчёт
 /admin — админ-панель
+/restaurants — заказать еду
 /help — справка
 """,
         reply_markup=get_main_keyboard()
@@ -128,26 +163,29 @@ async def cmd_mydebt(message: types.Message):
 # /set_duty (только для админов)
 async def cmd_set_duty(message: types.Message):
     user_id = message.from_user.id
-    if user_id not in settings.ADMIN_USER_IDS:
-        await message.answer("Только админ может назначать дежурного!", reply_markup=get_main_keyboard())
-        return
     with SessionLocal() as db:
-        users = db.query(User).all()
-        buttons = [types.KeyboardButton(u.username or str(u.telegram_id)) for u in users]
-        kb = types.ReplyKeyboardMarkup(keyboard=[buttons], resize_keyboard=True)
-        await message.answer("Кто будет дежурным?", reply_markup=kb)
-
-async def set_duty_choose(message: types.Message):
-    name = message.text
-    with SessionLocal() as db:
-        user = db.query(User).filter((User.username == name) | (User.telegram_id == name)).first()
-        if not user:
-            await message.answer("Пользователь не найден.", reply_markup=get_main_keyboard())
+        admin = db.query(User).filter_by(telegram_id=user_id).first()
+        if not admin or not admin.is_admin:
+            await message.answer("Только админ может назначать дежурного!", reply_markup=get_main_keyboard())
             return
+        users = db.query(User).all()
+        builder = InlineKeyboardBuilder()
+        for u in users:
+            builder.button(text=u.username or str(u.telegram_id), callback_data=f"setduty_{u.id}")
+        await message.answer("Кого назначить дежурным?", reply_markup=builder.as_markup())
+
+async def set_duty_callback(callback: types.CallbackQuery):
+    user_id = int(callback.data.replace("setduty_", ""))
+    with SessionLocal() as db:
         db.query(User).update({User.is_duty: False})
-        user.is_duty = True
-        db.commit()
-        await message.answer(f"{name} теперь дежурный!", reply_markup=get_main_keyboard())
+        user = db.query(User).filter_by(id=user_id).first()
+        if user:
+            user.is_duty = True
+            db.commit()
+            await callback.message.answer(f"{user.username or user.telegram_id} теперь дежурный!", reply_markup=get_main_keyboard())
+        else:
+            await callback.message.answer("Пользователь не найден.", reply_markup=get_main_keyboard())
+    await callback.answer()
 
 # /history
 async def cmd_history(message: types.Message):
@@ -172,6 +210,74 @@ async def cmd_report(message: types.Message):
 async def cmd_admin(message: types.Message):
     await message.answer("Админ-панель: http://localhost:8000", reply_markup=get_main_keyboard())
 
+# --- /restaurants ---
+async def cmd_restaurants(message: types.Message, state: FSMContext):
+    builder = InlineKeyboardBuilder()
+    for key, name in RESTAURANTS.items():
+        builder.button(text=name, callback_data=f"rest_{key}")
+    await message.answer("Выберите ресторан:", reply_markup=builder.as_markup())
+    await state.set_state(OrderFood.choosing_restaurant)
+
+async def restaurant_chosen(callback: types.CallbackQuery, state: FSMContext):
+    rest_key = callback.data.replace("rest_", "")
+    await state.update_data(restaurant=rest_key)
+    menu = RESTAURANT_MENUS.get(rest_key, [])
+    builder = InlineKeyboardBuilder()
+    for dish, price in menu:
+        builder.button(text=f"{dish} ({price}₽)", callback_data=f"dish_{dish}_{price}")
+    builder.button(text="Готово", callback_data="order_done")
+    await callback.message.answer(f"Меню {RESTAURANTS[rest_key]}: выберите блюда:", reply_markup=builder.as_markup())
+    await state.set_state(OrderFood.choosing_dishes)
+    await callback.answer()
+
+async def dish_chosen(callback: types.CallbackQuery, state: FSMContext):
+    _, dish, price = callback.data.split("_", 2)
+    data = await state.get_data()
+    chosen = data.get("dishes", [])
+    chosen.append((dish, int(price)))
+    await state.update_data(dishes=chosen)
+    await callback.answer(f"Добавлено: {dish} ({price}₽)")
+
+async def order_done(callback: types.CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    restaurant = RESTAURANTS.get(data.get("restaurant"), "?")
+    dishes = data.get("dishes", [])
+    user_id = callback.from_user.id
+    username = callback.from_user.username
+    total = sum(price for _, price in dishes)
+    desc = ", ".join([f"{dish} ({price}₽)" for dish, price in dishes])
+    # Записываем заказ в расходы
+    if dishes:
+        with SessionLocal() as db:
+            user = db.query(User).filter_by(telegram_id=user_id).first()
+            duty = db.query(User).filter_by(is_duty=True).first()
+            expense = Expense(
+                amount=total,
+                description=f"Заказ в {restaurant}: {desc}",
+                duty_user_id=duty.id if duty else None
+            )
+            db.add(expense)
+            db.commit()
+    await callback.message.answer(f"Ваш заказ в {restaurant}: {desc if dishes else 'ничего не выбрано'}", reply_markup=get_main_keyboard())
+    await state.clear()
+    await callback.answer()
+
+# Команда для дежурного: посмотреть все заказы (расходы)
+async def cmd_duty_orders(message: types.Message):
+    with SessionLocal() as db:
+        user = db.query(User).filter_by(telegram_id=message.from_user.id).first()
+        if not user or not user.is_duty:
+            await message.answer("Только дежурный может просматривать все заказы.", reply_markup=get_main_keyboard())
+            return
+        expenses = db.query(Expense).order_by(Expense.id.desc()).limit(20).all()
+        if not expenses:
+            await message.answer("Заказов пока нет.", reply_markup=get_main_keyboard())
+            return
+        text = "<b>Последние заказы:</b>\n"
+        for e in expenses:
+            text += f"{e.description} — {e.amount}₽\n"
+        await message.answer(text, reply_markup=get_main_keyboard())
+
 async def inline_command_handler(callback: types.CallbackQuery, state: FSMContext):
     data = callback.data
     if data == "add_expense":
@@ -186,7 +292,32 @@ async def inline_command_handler(callback: types.CallbackQuery, state: FSMContex
         await cmd_report(callback.message)
     await callback.answer()
 
+class AutoRegisterMiddleware(BaseMiddleware):
+    async def __call__(self, handler: Callable, event: types.Message, data: Dict[str, Any]) -> Any:
+        user_id = event.from_user.id
+        username = event.from_user.username
+        with SessionLocal() as db:
+            user = db.query(User).filter_by(telegram_id=user_id).first()
+            if not user:
+                user = User(telegram_id=user_id, username=username)
+                db.add(user)
+                db.commit()
+        return await handler(event, data)
+
+    async def on_callback_query(self, handler: Callable, event: types.CallbackQuery, data: Dict[str, Any]) -> Any:
+        user_id = event.from_user.id
+        username = event.from_user.username
+        with SessionLocal() as db:
+            user = db.query(User).filter_by(telegram_id=user_id).first()
+            if not user:
+                user = User(telegram_id=user_id, username=username)
+                db.add(user)
+                db.commit()
+        return await handler(event, data)
+
 def register_handlers(dp: Dispatcher):
+    dp.message.middleware(AutoRegisterMiddleware())
+    dp.callback_query.middleware(AutoRegisterMiddleware())
     dp.message.register(cmd_start, Command("start"))
     dp.message.register(cmd_help, Command("help"))
     dp.message.register(add_expense_start, Command("add_expense"))
@@ -195,8 +326,13 @@ def register_handlers(dp: Dispatcher):
     dp.message.register(cmd_balance, Command("balance"))
     dp.message.register(cmd_mydebt, Command("mydebt"))
     dp.message.register(cmd_set_duty, Command("set_duty"))
-    dp.message.register(set_duty_choose, F.text)
     dp.message.register(cmd_history, Command("history"))
     dp.message.register(cmd_report, Command("report"))
     dp.message.register(cmd_admin, Command("admin"))
+    dp.message.register(cmd_restaurants, Command("restaurants"))
+    dp.message.register(cmd_duty_orders, Command("duty_orders"))
+    dp.callback_query.register(restaurant_chosen, F.data.startswith("rest_"), OrderFood.choosing_restaurant)
+    dp.callback_query.register(dish_chosen, F.data.startswith("dish_"), OrderFood.choosing_dishes)
+    dp.callback_query.register(order_done, F.data == "order_done", OrderFood.choosing_dishes)
+    dp.callback_query.register(set_duty_callback, F.data.startswith("setduty_"))
     dp.callback_query.register(inline_command_handler)

@@ -21,6 +21,7 @@ choice = st.sidebar.selectbox("Меню", menu)
 with SessionLocal() as db:
     if choice == "Пользователи":
         st.header("👥 Пользователи")
+        if st.button("Обновить"): st.rerun()
         users = db.query(User).all()
         st.table([
             {
@@ -34,6 +35,7 @@ with SessionLocal() as db:
 
     elif choice == "Расходы":
         st.header("💸 Расходы")
+        if st.button("Обновить"): st.rerun()
         expenses = db.query(Expense).order_by(Expense.created_at.desc()).all()
         st.table([
             {
@@ -47,6 +49,7 @@ with SessionLocal() as db:
 
     elif choice == "Транзакции":
         st.header("🔄 Транзакции")
+        if st.button("Обновить"): st.rerun()
         transactions = db.query(Transaction).order_by(Transaction.created_at.desc()).all()
         st.table([
             {
@@ -60,6 +63,7 @@ with SessionLocal() as db:
 
     elif choice == "Добавить расход":
         st.header("➕ Добавить расход")
+        if st.button("Обновить"): st.rerun()
         users = db.query(User).all()
         description = st.text_input("Описание")
         amount = st.number_input("Сумма", min_value=0.0, step=0.01)
@@ -75,6 +79,7 @@ with SessionLocal() as db:
 
     elif choice == "Назначить дежурного":
         st.header("🧑‍🍳 Назначить дежурного")
+        if st.button("Обновить"): st.rerun()
         users = db.query(User).all()
         current_duty = db.query(User).filter_by(is_duty=True).first()
         st.write(f"Текущий дежурный: {current_duty.username if current_duty else 'Нет'}")
