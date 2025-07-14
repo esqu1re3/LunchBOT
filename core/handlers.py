@@ -13,6 +13,7 @@ from aiogram import Router
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.dispatcher.middlewares.base import BaseMiddleware
 from typing import Callable, Dict, Any, Awaitable
+import asyncio
 
 # --- FSM для заказа блюд ---
 from aiogram.fsm.state import State, StatesGroup
@@ -23,25 +24,39 @@ class OrderFood(StatesGroup):
 # --- /restaurants ---
 RESTAURANTS = {
     "kfc": "KFC",
-    "mcdonalds": "McDonald's",
-    "burgerking": "Burger King"
+    "faiza": "Фаиза",
+    "woklagman": "Wok Lagman",
+    "aziya": "Азия"
 }
-# Пример меню с ценами
+# Реальные меню с ценами в сомах (примерные, актуализируйте при необходимости)
 RESTAURANT_MENUS = {
     "kfc": [
-        ("Бургер", 150),
-        ("Картошка", 70),
-        ("Кола", 60)
+        ("Баскет Дуэт", 599),
+        ("Шефбургер Де Люкс", 299),
+        ("Фри стандарт", 99),
+        ("Крылышки 5 шт", 299),
+        ("Пепси 0.5л", 99)
     ],
-    "mcdonalds": [
-        ("Биг Мак", 200),
-        ("Картошка фри", 80),
-        ("Кока-кола", 65)
+    "faiza": [
+        ("Плов", 220),
+        ("Лагман", 200),
+        ("Манты (5шт)", 180),
+        ("Шашлык куриный", 180),
+        ("Чай чёрный", 40)
     ],
-    "burgerking": [
-        ("Воппер", 180),
-        ("Наггетсы", 90),
-        ("Пепси", 60)
+    "woklagman": [
+        ("Лагман классический", 250),
+        ("Гуйру лагман", 270),
+        ("Суп лагман", 220),
+        ("Самса", 70),
+        ("Чай зелёный", 40)
+    ],
+    "aziya": [
+        ("Суп Том Ям", 350),
+        ("Ролл Филадельфия", 420),
+        ("Суши лосось", 90),
+        ("Лапша удон с курицей", 320),
+        ("Морс", 60)
     ]
 }
 
@@ -132,12 +147,14 @@ async def cmd_balance(message: types.Message):
     with SessionLocal() as db:
         users = db.query(User).all()
         expenses = db.query(Expense).all()
+        # Считаем только тех, кто делал расходы
         balances = {u.username or str(u.telegram_id): 0 for u in users}
+        user_expenses = {u.id: 0 for u in users}
         for e in expenses:
             if e.duty_user:
-                balances[e.duty_user.username or str(e.duty_user.telegram_id)] -= e.amount
-            for u in users:
-                balances[u.username or str(u.telegram_id)] += e.amount / len(users)
+                user_expenses[e.duty_user.id] += e.amount
+        for u in users:
+            balances[u.username or str(u.telegram_id)] = -user_expenses[u.id]
         text = "<b>Балансы участников:</b>\n"
         for name, bal in balances.items():
             text += f"{name}: {bal:.2f}\n"
@@ -258,9 +275,15 @@ async def order_done(callback: types.CallbackQuery, state: FSMContext):
             )
             db.add(expense)
             db.commit()
-    await callback.message.answer(f"Ваш заказ в {restaurant}: {desc if dishes else 'ничего не выбрано'}", reply_markup=get_main_keyboard())
+    msg = await callback.message.answer(f"Ваш заказ в {restaurant}: {desc if dishes else 'ничего не выбрано'}", reply_markup=get_main_keyboard())
     await state.clear()
     await callback.answer()
+    # Автоудаление сообщения через 10 секунд
+    try:
+        await asyncio.sleep(10)
+        await msg.delete()
+    except Exception:
+        pass
 
 # Команда для дежурного: посмотреть все заказы (расходы)
 async def cmd_duty_orders(message: types.Message):
