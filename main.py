@@ -1,4 +1,5 @@
-from core.bot import start_bot
+from core.bot import main
 
 if __name__ == "__main__":
-    start_bot()
+    import asyncio
+    asyncio.run(main())

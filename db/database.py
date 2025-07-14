@@ -1,14 +1,13 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from config import settings
-from models.user import Base as UserBase
-from models.expense import Base as ExpenseBase
-from models.transaction import Base as TransactionBase
+from models.base import Base
+from models.user import User
+from models.expense import Expense
+from models.transaction import Transaction
 
 engine = create_engine(settings.DATABASE_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 def init_db():
-    UserBase.metadata.create_all(bind=engine)
-    ExpenseBase.metadata.create_all(bind=engine)
-    TransactionBase.metadata.create_all(bind=engine)
+    Base.metadata.create_all(bind=engine)

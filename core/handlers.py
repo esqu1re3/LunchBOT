@@ -1,4 +1,5 @@
 from aiogram import Dispatcher, types
+from aiogram.filters import Command
 from config import settings
 
 async def cmd_start(message: types.Message):
@@ -19,5 +20,5 @@ async def cmd_help(message: types.Message):
 """)
 
 def register_handlers(dp: Dispatcher):
-    dp.register_message_handler(cmd_start, commands=["start"])
-    dp.register_message_handler(cmd_help, commands=["help"])
+    dp.message.register(cmd_start, Command("start"))
+    dp.message.register(cmd_help, Command("help"))
