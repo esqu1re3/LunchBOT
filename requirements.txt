@@ -1,9 +1,0 @@
-aiogram
-SQLAlchemy
-alembic
-python-dotenv
-fastapi
-uvicorn
-pydantic
-pydantic-settings
-streamlit
