@@ -170,7 +170,7 @@ class BotHandlers:
             self.bot.send_message(
                 user_id,
                 ACTIVATION_SUCCESS.format(name=user_name),
-                reply_markup=get_main_menu_keyboard()
+                reply_markup=get_main_menu_reply_keyboard()
             )
             return
         
@@ -464,6 +464,17 @@ class BotHandlers:
         user_id = message.from_user.id
         user_state = self.get_user_state(user_id)
         
+        # Обработка reply-кнопок главного меню
+        if message.text == "💰 Создать долг":
+            self.start_new_debt_process(user_id)
+            return
+        elif message.text == "📋 Мои долги":
+            self.show_my_debts(user_id)
+            return
+        elif message.text == "❓ Помощь":
+            self.bot.send_message(user_id, HELP_MESSAGE, reply_markup=get_back_to_main_keyboard())
+            return
+        
         if not user_state.get('state'):
             return
         
@@ -499,7 +510,7 @@ class BotHandlers:
         self.bot.send_message(
             user_id,
             MAIN_MENU,
-            reply_markup=get_main_menu_keyboard()
+            reply_markup=get_main_menu_reply_keyboard()
         )
     
     def start_new_debt_process(self, user_id: int):

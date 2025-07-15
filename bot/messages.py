@@ -347,6 +347,23 @@ def get_back_to_main_keyboard() -> InlineKeyboardMarkup:
     )
     return keyboard
 
+def get_main_menu_reply_keyboard() -> ReplyKeyboardMarkup:
+    """
+    Создать обычную клавиатуру главного меню (ReplyKeyboardMarkup)
+    
+    Returns:
+        ReplyKeyboardMarkup с кнопками главного меню
+    """
+    keyboard = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
+    keyboard.add(
+        KeyboardButton("💰 Создать долг"),
+        KeyboardButton("📋 Мои долги")
+    )
+    keyboard.add(
+        KeyboardButton("❓ Помощь")
+    )
+    return keyboard
+
 # === Форматирование ===
 
 def format_debt_list(debts: List[Dict[str, Any]]) -> str:
