@@ -326,6 +326,31 @@ class BotHandlers:
         user_id = message.from_user.id
         user_state = self.get_user_state(user_id)
         
+        # Новый этап: создание долга с чеком
+        if user_state.get('state') == 'waiting_debt_receipt':
+            # Удаляем сообщение пользователя с файлом
+            try:
+                self.bot.delete_message(user_id, message.message_id)
+            except Exception:
+                pass
+            # Получаем ID файла и тип
+            file_id = None
+            file_type = None
+            if message.photo:
+                file_id = message.photo[-1].file_id
+                file_type = 'photo'
+            elif message.document:
+                file_id = message.document.file_id
+                file_type = 'document'
+            if not file_id:
+                self.bot.send_message(user_id, "Неподдерживаемый тип файла!")
+                return
+            # Удаляем все промежуточные сообщения
+            self.clear_messages_from_state(user_id)
+            # Создаём долг и отправляем кредитору с чеком
+            self.create_debt_final_with_receipt(user_id, file_id, file_type)
+            return
+        
         if user_state.get('state') not in ['waiting_payment_receipt', 'waiting_payment_receipt_all']:
             return
         
@@ -621,12 +646,18 @@ class BotHandlers:
             description: Описание долга
         """
         user_state = self.get_user_state(user_id)
-        
+        user_state['data']['description'] = description
         # Удаляем все промежуточные сообщения
         self.clear_messages_from_state(user_id)
-        
-        self.create_debt_final(user_id, description)
-    
+        # Переходим к этапу прикрепления чека
+        self.set_user_state(user_id, 'waiting_debt_receipt', user_state['data'])
+        msg = self.bot.send_message(
+            user_id,
+            "📸 Прикрепите фото или PDF чека для создания долга",
+            reply_markup=get_cancel_keyboard()
+        )
+        self.add_message_to_state(user_id, msg.message_id)
+
     def handle_debt_description_skip(self, user_id: int, message_id: int):
         """
         Обработка пропуска описания долга
@@ -637,9 +668,17 @@ class BotHandlers:
         """
         # Удаляем все промежуточные сообщения
         self.clear_messages_from_state(user_id)
-        
-        self.create_debt_final(user_id, None)
-    
+        user_state = self.get_user_state(user_id)
+        user_state['data']['description'] = None
+        # Переходим к этапу прикрепления чека
+        self.set_user_state(user_id, 'waiting_debt_receipt', user_state['data'])
+        msg = self.bot.send_message(
+            user_id,
+            "📸 Прикрепите фото или PDF чека для создания долга",
+            reply_markup=get_cancel_keyboard()
+        )
+        self.add_message_to_state(user_id, msg.message_id)
+
     def create_debt_final(self, user_id: int, description: Optional[str]):
         """
         Финальное создание долга
@@ -764,7 +803,17 @@ class BotHandlers:
             user_id: ID пользователя
             debt_id: ID долга
         """
-        # Просто отправляем подтверждение
+        # Просто удаляем сообщение с долгом (последнее сообщение)
+        # и отправляем короткое подтверждение
+        try:
+            # Получаем последнее сообщение пользователя (callback)
+            # Обычно это call.message.message_id, но тут только user_id и debt_id
+            # Поэтому ищем последнее сообщение в чате (или передаем message_id в callback)
+            # Для простоты: просим callback передавать message_id
+            # Но сейчас удаляем все сообщения из состояния (если есть)
+            self.clear_messages_from_state(user_id)
+        except Exception:
+            pass
         self.bot.send_message(
             user_id,
             "⏰ Хорошо, напомним позже!"
@@ -1259,4 +1308,59 @@ class BotHandlers:
         # Обновляем время последнего напоминания
         self.db.update_reminder_sent(debt['id'])
     
+    def create_debt_final_with_receipt(self, user_id: int, file_id: str, file_type: str):
+        """
+        Финальное создание долга с чеком
+        Args:
+            user_id: ID пользователя (кредитор)
+            file_id: ID файла чека
+            file_type: Тип файла (photo/document)
+        """
+        user_state = self.get_user_state(user_id)
+        data = user_state['data']
+        # Создаем долг
+        debt_id = self.db.create_debt(
+            debtor_id=data['selected_user_id'],
+            creditor_id=user_id,
+            amount=data['amount'],
+            description=data.get('description')
+        )
+        if debt_id:
+            debtor_id = data['selected_user_id']
+            creditor = self.db.get_user(user_id)
+            creditor_name = get_user_display_name(creditor)
+            description = data.get('description') or 'без описания'
+            amount = data['amount']
+            # Сообщение для должника
+            msg = f"""
+💰 Новый долг
+
+{creditor_name} добавил вам долг на сумму {amount} сом.
+Описание: {description}
+
+Чек прилагается ниже.
+"""
+            # Отправляем файл должнику
+            if file_type == 'photo':
+                self.bot.send_photo(
+                    debtor_id,
+                    file_id,
+                    caption=msg
+                )
+            else:
+                self.bot.send_document(
+                    debtor_id,
+                    file_id,
+                    caption=msg
+                )
+            # Кредитору обычное подтверждение
+            self.bot.send_message(
+                user_id,
+                f"✅ Долг создан! Должник получил чек и информацию о долге.",
+                reply_markup=get_back_to_main_keyboard()
+            )
+        else:
+            self.bot.send_message(user_id, ERROR_GENERAL)
+        self.clear_user_state(user_id)
+
  
