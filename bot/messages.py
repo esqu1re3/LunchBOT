@@ -26,8 +26,6 @@ ACTIVATION_SUCCESS = """
 • /help - помощь
 """
 
-
-
 MAIN_MENU = """
 📋 Главное меню
 
@@ -80,7 +78,7 @@ DEBT_CREATED = """
 ✅ Долг создан успешно!
 
 Должник: {debtor_name}
-Сумма: {amount} сом.
+Сумма: {amount} сом
 Описание: {description}
 Дата: {date}
 
@@ -97,12 +95,20 @@ MY_DEBTS_LIST = """
 📋 Ваши долги ({count}):
 
 {debts_list}
+
+💰 Итого к оплате: {total_amount} сом
+"""
+
+DEBT_PAYMENT_SELECTION = """
+💳 Выберите долги для оплаты
+
+Вы можете оплатить все долги сразу или выбрать конкретные:
 """
 
 DEBT_REMINDER = """
 ⏰ Напоминание о долге
 
-Вы должны {creditor_name} {amount} сом.
+Вы должны {creditor_name} {amount} сом
 Описание: {description}
 Дата создания: {created_at}
 
@@ -112,13 +118,13 @@ DEBT_REMINDER = """
 PAYMENT_RECEIPT_REQUEST = """
 📁 Отправьте чек об оплате
 
-Пожалуйста, отправьте фотографию или PDF файл чека об оплате долга на сумму {amount} сом.
+Пожалуйста, отправьте фотографию или PDF файл чека об оплате долга на сумму {amount} сом
 """
 
 PAYMENT_CONFIRMATION_REQUEST = """
 💳 Подтверждение оплаты
 
-{debtor_name} отправил чек об оплате долга на сумму {amount} сом.
+{debtor_name} отправил чек об оплате долга на сумму {amount} сом
 Описание: {description}
 
 Подтвердите оплату или оспорьте её.
@@ -127,14 +133,14 @@ PAYMENT_CONFIRMATION_REQUEST = """
 PAYMENT_CONFIRMED = """
 ✅ Оплата подтверждена!
 
-Долг на сумму {amount} сом. закрыт.
+Долг на сумму {amount} сом закрыт.
 Спасибо за использование бота!
 """
 
 PAYMENT_DISPUTED = """
 ⚠️ Оплата оспорена!
 
-Долг на сумму {amount} сом. оспорен.
+Долг на сумму {amount} сом оспорен.
 Администратор получил уведомление.
 """
 
@@ -143,7 +149,7 @@ DEBT_DISPUTED_ADMIN = """
 
 Кредитор: {creditor_name}
 Должник: {debtor_name}
-Сумма: {amount} сом.
+Сумма: {amount} сом
 Описание: {description}
 
 Требуется вмешательство администратора.
@@ -243,6 +249,48 @@ def get_debt_actions_keyboard(debt_id: int) -> InlineKeyboardMarkup:
     )
     return keyboard
 
+def get_debt_payment_keyboard(debts: List[Dict[str, Any]]) -> InlineKeyboardMarkup:
+    """
+    Создать клавиатуру для выбора долгов к оплате
+    
+    Args:
+        debts: Список долгов
+        
+    Returns:
+        Inline клавиатура с выбором долгов
+    """
+    keyboard = InlineKeyboardMarkup(row_width=1)
+    
+    # Кнопка "Оплатить все долги"
+    if len(debts) > 1:
+        total_amount = sum(debt['amount'] for debt in debts)
+        keyboard.add(
+            InlineKeyboardButton(
+                f"💳 Оплатить все долги ({total_amount:.2f} сом)",
+                callback_data="pay_all_debts"
+            )
+        )
+    
+    # Кнопки для отдельных долгов
+    for debt in debts:
+        creditor_name = debt['creditor_name'] or debt['creditor_username'] or f"User {debt['creditor_id']}"
+        description = debt['description'] or "без описания"
+        created_date = format_datetime(debt['created_at'])
+        
+        button_text = f"💰 {creditor_name}: {debt['amount']:.2f} сом ({created_date})"
+        keyboard.add(
+            InlineKeyboardButton(
+                button_text,
+                callback_data=f"pay_debt_{debt['id']}"
+            )
+        )
+    
+    keyboard.add(
+        InlineKeyboardButton("« Назад в меню", callback_data="back_to_main")
+    )
+    
+    return keyboard
+
 def get_payment_confirmation_keyboard(payment_id: int) -> InlineKeyboardMarkup:
     """
     Создать клавиатуру для подтверждения оплаты
@@ -318,12 +366,14 @@ def format_debt_list(debts: List[Dict[str, Any]]) -> str:
     for debt in debts:
         creditor_name = debt['creditor_name'] or debt['creditor_username'] or f"User {debt['creditor_id']}"
         description = debt['description'] or "без описания"
+        created_date = format_datetime(debt['created_at'])
         
         debt_lines.append(
-            f"• {creditor_name}: {debt['amount']} сом. ({description})"
+            f"• {creditor_name}: {debt['amount']:.2f} сом ({description})\n"
+            f"  📅 Создано: {created_date}"
         )
     
-    return "\n".join(debt_lines)
+    return "\n\n".join(debt_lines)
 
 def format_datetime(dt_string: str) -> str:
     """
