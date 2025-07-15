@@ -691,7 +691,7 @@ class BotHandlers:
         message = f"""
 💰 Новый долг
 
-{creditor_name} добавил вам долг на сумму {amount} руб.
+{creditor_name} добавил вам долг на сумму {amount} сом.
 Описание: {description}
 
 Не забудьте вовремя рассчитаться!
@@ -721,13 +721,13 @@ class BotHandlers:
                 self.bot.send_photo(
                     creditor_id,
                     file_id,
-                    caption=f"💳 Чек от {debt['debtor_name']} на сумму {debt['amount']} руб."
+                    caption=f"💳 Чек от {debt['debtor_name']} на сумму {debt['amount']} сом."
                 )
             else:
                 self.bot.send_document(
                     creditor_id,
                     file_id,
-                    caption=f"💳 Чек от {debt['debtor_name']} на сумму {debt['amount']} руб."
+                    caption=f"💳 Чек от {debt['debtor_name']} на сумму {debt['amount']} сом."
                 )
         except Exception as e:
             logger.error(f"Ошибка отправки файла: {e}")

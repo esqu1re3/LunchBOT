@@ -97,11 +97,11 @@ def show_overview(db: DatabaseManager):
     
     with col3:
         total_amount = sum(debt['amount'] for debt in debts)
-        st.metric("Общая сумма долгов", f"{total_amount:.2f} руб.")
+        st.metric("Общая сумма долгов", f"{total_amount:.2f} сом.")
     
     with col4:
         avg_amount = total_amount / len(debts) if debts else 0
-        st.metric("Средний долг", f"{avg_amount:.2f} руб.")
+        st.metric("Средний долг", f"{avg_amount:.2f} сом.")
     
     # Таблица последних долгов
     st.subheader("📋 Последние долги")
@@ -124,7 +124,7 @@ def show_overview(db: DatabaseManager):
             ]
             
             # Форматируем данные
-            debts_display['Сумма'] = debts_display['Сумма'].apply(lambda x: f"{x:.2f} руб.")
+            debts_display['Сумма'] = debts_display['Сумма'].apply(lambda x: f"{x:.2f} сом.")
             debts_display['Дата создания'] = debts_display['Дата создания'].apply(format_datetime)
             debts_display['Статус'] = debts_display['Статус'].apply(format_status)
             
@@ -177,13 +177,13 @@ def show_debts(db: DatabaseManager):
             
             # Отображаем долги
             for debt in filtered_debts:
-                with st.expander(f"💰 {debt['debtor_name']} → {debt['creditor_name']}: {debt['amount']} руб."):
+                with st.expander(f"💰 {debt['debtor_name']} → {debt['creditor_name']}: {debt['amount']} сом."):
                     col1, col2 = st.columns(2)
                     
                     with col1:
                         st.write(f"**Должник:** {debt['debtor_name']}")
                         st.write(f"**Кредитор:** {debt['creditor_name']}")
-                        st.write(f"**Сумма:** {debt['amount']} руб.")
+                        st.write(f"**Сумма:** {debt['amount']} сом.")
                         st.write(f"**Описание:** {debt['description'] or 'Не указано'}")
                     
                     with col2:
@@ -282,7 +282,7 @@ def show_users(db: DatabaseManager):
             
             if debtor_stats:
                 for debtor, stats in debtor_stats.items():
-                    st.write(f"**{debtor}**: {stats['count']} долгов на сумму {stats['amount']:.2f} руб.")
+                    st.write(f"**{debtor}**: {stats['count']} долгов на сумму {stats['amount']:.2f} сом.")
             else:
                 st.info("Нет долгов")
         
@@ -301,7 +301,7 @@ def show_users(db: DatabaseManager):
             
             if creditor_stats:
                 for creditor, stats in creditor_stats.items():
-                    st.write(f"**{creditor}**: {stats['count']} долгов на сумму {stats['amount']:.2f} руб.")
+                    st.write(f"**{creditor}**: {stats['count']} долгов на сумму {stats['amount']:.2f} сом.")
             else:
                 st.info("Нет долгов")
         
