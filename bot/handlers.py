@@ -38,7 +38,7 @@ class BotHandlers:
         self.bot.message_handler(commands=['help'])(self.handle_help)
         self.bot.message_handler(commands=['new_debt'])(self.handle_new_debt_command)
         self.bot.message_handler(commands=['my_debts'])(self.handle_my_debts_command)
-        self.bot.message_handler(commands=['activate'])(self.handle_activate_command)
+
         
         # Callback-запросы
         self.bot.callback_query_handler(func=lambda call: True)(self.handle_callback_query)
@@ -113,7 +113,20 @@ class BotHandlers:
         
         # Проверяем активацию
         if not self.check_user_activation(user_id):
-            self.bot.send_message(user_id, WELCOME_MESSAGE)
+            # Автоматически активируем пользователя
+            self.db.create_user(
+                user_id=user_id,
+                username=message.from_user.username,
+                first_name=message.from_user.first_name,
+                last_name=message.from_user.last_name
+            )
+            
+            user_name = message.from_user.first_name or message.from_user.username or f"User {user_id}"
+            self.bot.send_message(
+                user_id,
+                ACTIVATION_SUCCESS.format(name=user_name),
+                reply_markup=get_main_menu_keyboard()
+            )
             return
         
         # Показываем главное меню
@@ -168,23 +181,7 @@ class BotHandlers:
         
         self.show_my_debts(user_id)
     
-    def handle_activate_command(self, message: Message):
-        """
-        Обработка команды /activate
-        
-        Args:
-            message: Сообщение от пользователя
-        """
-        user_id = message.from_user.id
-        
-        # Извлекаем токен из сообщения
-        parts = message.text.split()
-        if len(parts) != 2:
-            self.bot.send_message(user_id, "Использование: /activate <token>")
-            return
-        
-        token = parts[1]
-        self.activate_user(user_id, token, message.from_user)
+
     
     # === Обработчики callback-запросов ===
     
@@ -242,11 +239,11 @@ class BotHandlers:
             # Подтверждение платежа
             elif data.startswith("confirm_payment_"):
                 payment_id = int(data.split("_")[2])
-                self.handle_confirm_payment(user_id, payment_id)
+                self.handle_confirm_payment(user_id, payment_id, call.message)
                 
             elif data.startswith("dispute_payment_"):
                 payment_id = int(data.split("_")[2])
-                self.handle_dispute_payment(user_id, payment_id)
+                self.handle_dispute_payment(user_id, payment_id, call.message)
                 
             # Отвечаем на callback
             self.bot.answer_callback_query(call.id)
@@ -271,12 +268,16 @@ class BotHandlers:
             return
         
         try:
-            # Получаем ID файла
+            # Получаем ID файла и тип
             file_id = None
+            file_type = None
+            
             if message.photo:
                 file_id = message.photo[-1].file_id  # Берем наибольшее разрешение
+                file_type = 'photo'
             elif message.document:
                 file_id = message.document.file_id
+                file_type = 'document'
             
             if not file_id:
                 self.bot.send_message(user_id, "Неподдерживаемый тип файла!")
@@ -304,7 +305,8 @@ class BotHandlers:
                     creditor_id=debt['creditor_id'],
                     payment_id=payment_id,
                     debt=debt,
-                    file_id=file_id
+                    file_id=file_id,
+                    file_type=file_type
                 )
                 
                 self.bot.send_message(
@@ -574,13 +576,14 @@ class BotHandlers:
             "⏰ Хорошо, напомним позже!"
         )
     
-    def handle_confirm_payment(self, user_id: int, payment_id: int):
+    def handle_confirm_payment(self, user_id: int, payment_id: int, message):
         """
         Обработка подтверждения платежа
         
         Args:
             user_id: ID пользователя
             payment_id: ID платежа
+            message: Сообщение с кнопками
         """
         payment = self.db.get_payment(payment_id)
         
@@ -600,21 +603,29 @@ class BotHandlers:
                 PAYMENT_CONFIRMED.format(amount=debt['amount'])
             )
             
-            # Уведомляем кредитора
-            self.bot.send_message(
-                user_id,
-                PAYMENT_CONFIRMED.format(amount=debt['amount'])
-            )
+            # Редактируем сообщение, убираем кнопки
+            try:
+                self.bot.edit_message_text(
+                    f"✅ Оплата подтверждена!\n\nДолг на сумму {debt['amount']} руб. закрыт.",
+                    chat_id=user_id,
+                    message_id=message.message_id
+                )
+            except:
+                self.bot.send_message(
+                    user_id,
+                    PAYMENT_CONFIRMED.format(amount=debt['amount'])
+                )
         else:
             self.bot.send_message(user_id, ERROR_GENERAL)
     
-    def handle_dispute_payment(self, user_id: int, payment_id: int):
+    def handle_dispute_payment(self, user_id: int, payment_id: int, message):
         """
         Обработка оспаривания платежа
         
         Args:
             user_id: ID пользователя
             payment_id: ID платежа
+            message: Сообщение с кнопками
         """
         payment = self.db.get_payment(payment_id)
         
@@ -635,11 +646,18 @@ class BotHandlers:
                 PAYMENT_DISPUTED.format(amount=debt['amount'])
             )
             
-            # Уведомляем кредитора
-            self.bot.send_message(
-                user_id,
-                PAYMENT_DISPUTED.format(amount=debt['amount'])
-            )
+            # Редактируем сообщение, убираем кнопки
+            try:
+                self.bot.edit_message_text(
+                    f"⚠️ Оплата оспорена!\n\nДолг на сумму {debt['amount']} руб. оспорен.\nАдминистратор получил уведомление.",
+                    chat_id=user_id,
+                    message_id=message.message_id
+                )
+            except:
+                self.bot.send_message(
+                    user_id,
+                    PAYMENT_DISPUTED.format(amount=debt['amount'])
+                )
             
             # Уведомляем админа
             admin_chat_id = self.db.get_setting('admin_chat_id')
@@ -686,7 +704,7 @@ class BotHandlers:
         )
     
     def send_payment_confirmation_request(self, creditor_id: int, payment_id: int, 
-                                        debt: Dict[str, Any], file_id: str):
+                                        debt: Dict[str, Any], file_id: str, file_type: str = 'photo'):
         """
         Отправить запрос на подтверждение платежа
         
@@ -695,19 +713,27 @@ class BotHandlers:
             payment_id: ID платежа
             debt: Информация о долге
             file_id: ID файла чека
+            file_type: Тип файла (photo или document)
         """
-        # Пересылаем файл
+        # Отправляем файл кредитору
         try:
-            self.bot.forward_message(
-                creditor_id,
-                debt['debtor_id'],
-                0  # Здесь должен быть message_id файла, но у нас его нет
-            )
-        except:
-            # Если не получается переслать, отправляем ID файла
+            if file_type == 'photo':
+                self.bot.send_photo(
+                    creditor_id,
+                    file_id,
+                    caption=f"💳 Чек от {debt['debtor_name']} на сумму {debt['amount']} руб."
+                )
+            else:
+                self.bot.send_document(
+                    creditor_id,
+                    file_id,
+                    caption=f"💳 Чек от {debt['debtor_name']} на сумму {debt['amount']} руб."
+                )
+        except Exception as e:
+            logger.error(f"Ошибка отправки файла: {e}")
             self.bot.send_message(
                 creditor_id,
-                f"Файл чека: {file_id}"
+                f"💳 Чек от {debt['debtor_name']} (не удалось отправить файл)"
             )
         
         # Отправляем запрос на подтверждение
@@ -744,32 +770,4 @@ class BotHandlers:
         # Обновляем время последнего напоминания
         self.db.update_reminder_sent(debt['id'])
     
-    # === Методы для активации ===
-    
-    def activate_user(self, user_id: int, token: str, user_info):
-        """
-        Активировать пользователя
-        
-        Args:
-            user_id: ID пользователя
-            token: Токен активации
-            user_info: Информация о пользователе из Telegram
-        """
-        if self.db.activate_user(token, user_id):
-            # Создаем пользователя
-            self.db.create_user(
-                user_id=user_id,
-                username=user_info.username,
-                first_name=user_info.first_name,
-                last_name=user_info.last_name
-            )
-            
-            user_name = user_info.first_name or user_info.username or f"User {user_id}"
-            
-            self.bot.send_message(
-                user_id,
-                ACTIVATION_SUCCESS.format(name=user_name),
-                reply_markup=get_main_menu_keyboard()
-            )
-        else:
-            self.bot.send_message(user_id, ACTIVATION_FAILED) 
+ 

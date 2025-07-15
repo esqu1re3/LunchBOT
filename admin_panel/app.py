@@ -63,7 +63,6 @@ def main():
         "Обзор": "overview",
         "Долги": "debts",
         "Пользователи": "users",
-        "Ссылки активации": "activation_links",
         "Настройки": "settings"
     }
     
@@ -76,8 +75,6 @@ def main():
         show_debts(db)
     elif selected_page == "Пользователи":
         show_users(db)
-    elif selected_page == "Ссылки активации":
-        show_activation_links(db)
     elif selected_page == "Настройки":
         show_settings(db)
 
@@ -311,95 +308,48 @@ def show_users(db: DatabaseManager):
         # Таблица пользователей
         st.subheader("📋 Список пользователей")
         
-        users_df = pd.DataFrame(users)
-        display_columns = ['first_name', 'username', 'user_id', 'is_active', 'created_at', 'activated_at']
-        
-        if all(col in users_df.columns for col in display_columns):
-            users_display = users_df[display_columns].copy()
-            users_display.columns = [
-                'Имя', 'Username', 'User ID', 'Активен', 'Создан', 'Активирован'
-            ]
+        # Показываем пользователей в expandable блоках
+        for user in users:
+            display_name = user['first_name'] or user['username'] or f"User {user['user_id']}"
             
-            # Форматируем данные
-            users_display['Активен'] = users_display['Активен'].apply(lambda x: '✅' if x else '❌')
-            users_display['Создан'] = users_display['Создан'].apply(format_datetime)
-            users_display['Активирован'] = users_display['Активирован'].apply(format_datetime)
-            
-            st.dataframe(users_display, use_container_width=True)
+            with st.expander(f"👤 {display_name} (@{user['username'] or 'нет username'})"):
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.write(f"**User ID:** {user['user_id']}")
+                    st.write(f"**Username:** @{user['username'] or 'нет'}")
+                    st.write(f"**Активен:** {'✅' if user['is_active'] else '❌'}")
+                    st.write(f"**Создан:** {format_datetime(user['created_at'])}")
+                    st.write(f"**Активирован:** {format_datetime(user['activated_at'])}")
+                
+                with col2:
+                    # Форма для переименования
+                    with st.form(f"rename_user_{user['user_id']}"):
+                        st.write("**Изменить имя:**")
+                        new_first_name = st.text_input(
+                            "Имя", 
+                            value=user['first_name'] or '', 
+                            key=f"first_name_{user['user_id']}"
+                        )
+                        new_last_name = st.text_input(
+                            "Фамилия", 
+                            value=user['last_name'] or '', 
+                            key=f"last_name_{user['user_id']}"
+                        )
+                        
+                        if st.form_submit_button("Сохранить"):
+                            if new_first_name.strip():
+                                if db.update_user_name(user['user_id'], new_first_name.strip(), new_last_name.strip() or None):
+                                    st.success("Имя обновлено!")
+                                    st.rerun()
+                                else:
+                                    st.error("Ошибка при обновлении имени")
+                            else:
+                                st.error("Имя не может быть пустым")
     else:
         st.info("Нет зарегистрированных пользователей")
 
-def show_activation_links(db: DatabaseManager):
-    """Показать управление ссылками активации"""
-    st.header("🔗 Управление ссылками активации")
-    
-    # Вкладки
-    tab1, tab2 = st.tabs(["Активные ссылки", "Создать ссылку"])
-    
-    with tab1:
-        st.subheader("📋 Активные ссылки")
-        
-        links = db.get_activation_links()
-        
-        if links:
-            for link in links:
-                status_icon = "✅" if link['is_used'] else "🔴"
-                status_text = "Использована" if link['is_used'] else "Активна"
-                
-                with st.expander(f"{status_icon} {link['name']} - {status_text}"):
-                    col1, col2 = st.columns(2)
-                    
-                    with col1:
-                        st.write(f"**Имя:** {link['name']}")
-                        st.write(f"**Статус:** {status_text}")
-                        st.write(f"**Создана:** {format_datetime(link['created_at'])}")
-                        if link['is_used']:
-                            st.write(f"**Использована:** {format_datetime(link['used_at'])}")
-                            st.write(f"**User ID:** {link['user_id']}")
-                    
-                    with col2:
-                        if not link['is_used']:
-                            # Показываем ссылку для копирования
-                            activation_url = f"https://t.me/@MealLunchBot?start={link['token']}"
-                            st.code(activation_url, language="text")
-                            st.write("**Команда для активации:**")
-                            st.code(f"/activate {link['token']}", language="text")
-                            
-                            # Кнопка удаления
-                            if st.button(f"Удалить ссылку", key=f"delete_{link['id']}"):
-                                if db.delete_activation_link(link['token']):
-                                    st.success("Ссылка удалена!")
-                                    st.rerun()
-                                else:
-                                    st.error("Ошибка при удалении ссылки")
-        else:
-            st.info("Нет созданных ссылок активации")
-    
-    with tab2:
-        st.subheader("➕ Создать новую ссылку")
-        
-        with st.form("create_link_form"):
-            name = st.text_input("Имя участника", placeholder="Введите имя участника")
-            
-            if st.form_submit_button("Создать ссылку"):
-                if name.strip():
-                    token = db.create_activation_link(name.strip())
-                    if token:
-                        st.success(f"Ссылка создана для {name}!")
-                        
-                        # Показываем созданную ссылку
-                        activation_url = f"https://t.me/@MealLunchBot?start={token}"
-                        st.write("**Ссылка для активации:**")
-                        st.code(activation_url, language="text")
-                        
-                        st.write("**Команда для активации:**")
-                        st.code(f"/activate {token}", language="text")
-                        
-                        st.rerun()
-                    else:
-                        st.error("Ошибка при создании ссылки")
-                else:
-                    st.error("Введите имя участника")
+
 
 def show_settings(db: DatabaseManager):
     """Показать настройки системы"""
@@ -409,37 +359,61 @@ def show_settings(db: DatabaseManager):
     st.subheader("⏰ Настройки напоминаний")
     
     current_frequency = int(db.get_setting('reminder_frequency') or 1)
+    current_time = db.get_setting('reminder_time') or '17:30'
     
     with st.form("reminder_settings"):
-        frequency_options = {
-            "Каждый день": 1,
-            "Каждые 2 дня": 2,
-            "Каждые 3 дня": 3,
-            "Еженедельно": 7,
-            "Каждые 2 недели": 14
-        }
+        col1, col2 = st.columns(2)
         
-        # Находим текущий вариант
-        current_option = None
-        for option, value in frequency_options.items():
-            if value == current_frequency:
-                current_option = option
-                break
+        with col1:
+            frequency_options = {
+                "Каждый день": 1,
+                "Каждые 2 дня": 2,
+                "Каждые 3 дня": 3,
+                "Еженедельно": 7,
+                "Каждые 2 недели": 14
+            }
+            
+            # Находим текущий вариант
+            current_option = None
+            for option, value in frequency_options.items():
+                if value == current_frequency:
+                    current_option = option
+                    break
+            
+            if not current_option:
+                current_option = f"Каждые {current_frequency} дней"
+                frequency_options[current_option] = current_frequency
+            
+            selected_frequency = st.selectbox(
+                "Частота напоминаний о долгах",
+                list(frequency_options.keys()),
+                index=list(frequency_options.keys()).index(current_option)
+            )
         
-        if not current_option:
-            current_option = f"Каждые {current_frequency} дней"
-            frequency_options[current_option] = current_frequency
-        
-        selected_frequency = st.selectbox(
-            "Частота напоминаний о долгах",
-            list(frequency_options.keys()),
-            index=list(frequency_options.keys()).index(current_option)
-        )
+        with col2:
+            # Парсим время
+            try:
+                time_obj = datetime.strptime(current_time, '%H:%M').time()
+            except:
+                time_obj = datetime.strptime('17:30', '%H:%M').time()
+            
+            reminder_time = st.time_input(
+                "Время напоминаний",
+                value=time_obj
+            )
         
         if st.form_submit_button("Сохранить настройки"):
             new_frequency = frequency_options[selected_frequency]
-            if db.set_setting('reminder_frequency', str(new_frequency)):
-                st.success(f"Частота напоминаний изменена на: {selected_frequency}")
+            new_time = reminder_time.strftime('%H:%M')
+            
+            success = True
+            if not db.set_setting('reminder_frequency', str(new_frequency)):
+                success = False
+            if not db.set_setting('reminder_time', new_time):
+                success = False
+            
+            if success:
+                st.success(f"Настройки сохранены: {selected_frequency} в {new_time}")
                 st.rerun()
             else:
                 st.error("Ошибка при сохранении настроек")
@@ -458,6 +432,17 @@ def show_settings(db: DatabaseManager):
         st.info("**Токен бота:** Настраивается в файле .env")
     
     st.warning("ℹ️ Для изменения токена бота и админ ID отредактируйте файл .env и перезапустите систему.")
+    
+    # Ссылка на бота
+    st.subheader("🔗 Подключение к боту")
+    
+    bot_url = "https://t.me/@MealLunchBot"
+    
+    st.info(f"**Ссылка на бота:** {bot_url}")
+    st.write("Отправьте эту ссылку участникам команды. При переходе по ссылке и нажатии /start пользователи автоматически подключатся к боту.")
+    
+    # Кнопка для копирования
+    st.code(bot_url, language="text")
     
     # Информация о системе
     st.subheader("📊 Информация о системе")

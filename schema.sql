@@ -64,6 +64,7 @@ CREATE TABLE IF NOT EXISTS settings (
 
 -- Вставляем значения настроек по умолчанию
 INSERT OR IGNORE INTO settings (key, value) VALUES ('reminder_frequency', '1');
+INSERT OR IGNORE INTO settings (key, value) VALUES ('reminder_time', '17:30');
 INSERT OR IGNORE INTO settings (key, value) VALUES ('bot_token', '');
 INSERT OR IGNORE INTO settings (key, value) VALUES ('admin_chat_id', '');
 

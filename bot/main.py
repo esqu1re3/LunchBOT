@@ -44,19 +44,32 @@ class LunchBot:
     def setup_reminder_scheduler(self):
         """Настройка планировщика напоминаний"""
         try:
-            # Получаем частоту напоминаний из настроек
+            # Получаем частоту и время напоминаний из настроек
             frequency = int(self.db.get_setting('reminder_frequency') or 1)
+            reminder_time = self.db.get_setting('reminder_time') or '17:30'
+            
+            # Парсим время
+            hour, minute = map(int, reminder_time.split(':'))
             
             # Добавляем задачу для отправки напоминаний
+            from apscheduler.triggers.cron import CronTrigger
+            
+            if frequency == 1:
+                # Каждый день в указанное время
+                trigger = CronTrigger(hour=hour, minute=minute)
+            else:
+                # Каждые N дней в указанное время
+                trigger = CronTrigger(hour=hour, minute=minute, day=f'*/{frequency}')
+            
             self.scheduler.add_job(
                 func=self.send_reminders,
-                trigger=IntervalTrigger(hours=frequency * 24),
+                trigger=trigger,
                 id='debt_reminders',
                 name='Напоминания о долгах',
                 replace_existing=True
             )
             
-            logger.info(f"Планировщик напоминаний настроен (каждые {frequency} дней)")
+            logger.info(f"Планировщик напоминаний настроен (каждые {frequency} дней в {reminder_time})")
             
         except Exception as e:
             logger.error(f"Ошибка настройки планировщика: {e}")

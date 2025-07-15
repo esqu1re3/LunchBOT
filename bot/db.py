@@ -117,6 +117,32 @@ class DatabaseManager:
             logger.error(f"Ошибка получения пользователей: {e}")
             return []
     
+    def update_user_name(self, user_id: int, first_name: str, last_name: str = None) -> bool:
+        """
+        Обновить имя пользователя
+        
+        Args:
+            user_id: Telegram user ID
+            first_name: Новое имя
+            last_name: Новая фамилия
+            
+        Returns:
+            True если обновление успешно
+        """
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    UPDATE users 
+                    SET first_name = ?, last_name = ?
+                    WHERE user_id = ?
+                """, (first_name, last_name, user_id))
+                conn.commit()
+                return cursor.rowcount > 0
+        except Exception as e:
+            logger.error(f"Ошибка обновления имени пользователя: {e}")
+            return False
+    
     # === Работа с ссылками активации ===
     
     def create_activation_link(self, name: str) -> Optional[str]:
