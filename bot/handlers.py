@@ -545,13 +545,13 @@ class BotHandlers:
         Args:
             user_id: ID пользователя
         """
-        # Получаем всех пользователей кроме текущего
-        users = self.db.get_all_users()
+        # Получаем всех активных пользователей кроме текущего
+        users = [u for u in self.db.get_all_users() if u['is_active'] and u['user_id'] != user_id]
         
-        if len(users) <= 1:
+        if len(users) == 0:
             self.bot.send_message(
                 user_id,
-                "❌ Нет других пользователей для создания долга!"
+                "❌ Нет других активных пользователей для создания долга!"
             )
             return
         
@@ -561,7 +561,7 @@ class BotHandlers:
         message = self.bot.send_message(
             user_id,
             NEW_DEBT_START,
-            reply_markup=get_users_keyboard(users, exclude_user_id=user_id)
+            reply_markup=get_users_keyboard(users)
         )
         
         # Сохраняем message_id для последующего удаления
@@ -578,8 +578,8 @@ class BotHandlers:
         """
         selected_user = self.db.get_user(selected_user_id)
         
-        if not selected_user:
-            self.bot.send_message(user_id, ERROR_USER_NOT_FOUND)
+        if not selected_user or not selected_user['is_active']:
+            self.bot.send_message(user_id, "❌ Пользователь неактивен или не найден!")
             return
         
         # Сохраняем выбранного пользователя в состоянии

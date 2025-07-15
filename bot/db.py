@@ -103,15 +103,14 @@ class DatabaseManager:
     
     def get_all_users(self) -> List[Dict[str, Any]]:
         """
-        Получить всех пользователей
-        
+        Получить всех пользователей (активных и неактивных)
         Returns:
             Список словарей с информацией о пользователях
         """
         try:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
-                cursor.execute("SELECT * FROM users WHERE is_active = 1")
+                cursor.execute("SELECT * FROM users ORDER BY is_active DESC, first_name ASC")
                 return [dict(row) for row in cursor.fetchall()]
         except Exception as e:
             logger.error(f"Ошибка получения пользователей: {e}")
@@ -596,4 +595,48 @@ class DatabaseManager:
                 return cursor.rowcount > 0
         except Exception as e:
             logger.error(f"Ошибка обновления напоминания: {e}")
+            return False 
+
+    def delete_user_cascade(self, user_id: int) -> bool:
+        """
+        Каскадное удаление пользователя и всех связанных данных (долги, платежи, ссылки активации)
+        Args:
+            user_id: Telegram user ID
+        Returns:
+            True если удаление прошло успешно
+        """
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                # Удаляем платежи, где пользователь был должником или кредитором
+                cursor.execute("DELETE FROM payments WHERE debtor_id = ? OR creditor_id = ?", (user_id, user_id))
+                # Удаляем долги, где пользователь был должником или кредитором
+                cursor.execute("DELETE FROM debts WHERE debtor_id = ? OR creditor_id = ?", (user_id, user_id))
+                # Удаляем ссылки активации
+                cursor.execute("DELETE FROM activation_links WHERE user_id = ?", (user_id,))
+                # Удаляем самого пользователя
+                cursor.execute("DELETE FROM users WHERE user_id = ?", (user_id,))
+                conn.commit()
+                return True
+        except Exception as e:
+            logger.error(f"Ошибка каскадного удаления пользователя: {e}")
+            return False 
+
+    def set_user_active(self, user_id: int, is_active: int) -> bool:
+        """
+        Активировать или деактивировать пользователя
+        Args:
+            user_id: Telegram user ID
+            is_active: 1 - активен, 0 - неактивен
+        Returns:
+            True если обновление прошло успешно
+        """
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("UPDATE users SET is_active = ? WHERE user_id = ?", (is_active, user_id))
+                conn.commit()
+                return cursor.rowcount > 0
+        except Exception as e:
+            logger.error(f"Ошибка смены статуса активности пользователя: {e}")
             return False 

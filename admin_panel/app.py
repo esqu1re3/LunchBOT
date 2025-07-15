@@ -321,6 +321,21 @@ def show_users(db: DatabaseManager):
                     st.write(f"**Активен:** {'✅' if user['is_active'] else '❌'}")
                     st.write(f"**Создан:** {format_datetime(user['created_at'])}")
                     st.write(f"**Активирован:** {format_datetime(user['activated_at'])}")
+                    # Toggle для активации/деактивации
+                    active = st.toggle("Активен (можно назначать долги)", value=bool(user['is_active']), key=f"toggle_active_{user['user_id']}")
+                    if active != bool(user['is_active']):
+                        if db.set_user_active(user['user_id'], int(active)):
+                            st.success("Статус пользователя обновлён!")
+                            st.rerun()
+                        else:
+                            st.error("Ошибка при обновлении статуса пользователя")
+                    # Кнопка для каскадного удаления
+                    if st.button(f"Удалить пользователя и все данные", key=f"delete_user_{user['user_id']}"):
+                        if db.delete_user_cascade(user['user_id']):
+                            st.success("Пользователь и все связанные данные удалены!")
+                            st.rerun()
+                        else:
+                            st.error("Ошибка при удалении пользователя")
                 
                 with col2:
                     # Форма для переименования
