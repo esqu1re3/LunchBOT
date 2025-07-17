@@ -235,7 +235,11 @@ class BotHandlers:
         self.show_who_owes_me(user_id)
 
     def show_who_owes_me(self, user_id: int):
-        # Получаем все открытые долги, где user_id — кредитор
+        """
+        Показать, кто должен пользователю (кредитору), с подробностями по каждому долгу
+        Args:
+            user_id: ID пользователя
+        """
         debts = [d for d in self.db.get_open_debts() if d['creditor_id'] == user_id]
         if not debts:
             self.bot.send_message(
@@ -244,17 +248,29 @@ class BotHandlers:
                 reply_markup=get_back_to_main_keyboard()
             )
             return
-        # Группируем по должникам
-        debtors = {}
-        for debt in debts:
-            name = debt['debtor_name'] or debt['debtor_username'] or f"User {debt['debtor_id']}"
-            debtors.setdefault(name, 0)
-            debtors[name] += debt['amount']
-        debtors_list = '\n'.join([f"• {name}: {amount:.2f} сом" for name, amount in debtors.items()])
-        total_amount = sum(debtors.values())
+        # Итоговая сумма
+        total_amount = sum(debt['amount'] for debt in debts)
+        # Форматируем список долгов с датами и описанием
+        debts_list = format_debt_list([
+            {
+                **debt,
+                'creditor_name': debt['debtor_name'],  # Для вывода: кто должен
+                'creditor_username': debt['debtor_username'],
+                'created_at': debt['created_at'],
+                'description': debt['description']
+            } for debt in debts
+        ])
+        # Сообщение аналогично show_my_debts
+        combined_message = f"""
+📋 Кто вам должен ({len(debts)}):
+
+{debts_list}
+
+💰 Итого к получению: {total_amount} сом
+"""
         self.bot.send_message(
             user_id,
-            WHO_OWES_ME_MESSAGE.format(debtors_list=debtors_list, total_amount=total_amount),
+            combined_message,
             reply_markup=get_back_to_main_keyboard()
         )
 
