@@ -257,7 +257,7 @@ def get_debt_actions_keyboard(debt_id: int) -> InlineKeyboardMarkup:
     """
     keyboard = InlineKeyboardMarkup(row_width=2)
     keyboard.add(
-        InlineKeyboardButton("💳 Я оплатил", callback_data=f"pay_debt_{debt_id}"),
+        InlineKeyboardButton("💳 Оплачено", callback_data=f"pay_debt_{debt_id}"),
         InlineKeyboardButton("⏰ Напомнить позже", callback_data=f"remind_later_{debt_id}")
     )
     return keyboard

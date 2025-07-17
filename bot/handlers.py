@@ -1144,8 +1144,7 @@ class BotHandlers:
     def send_debt_notification(self, debtor_id: int, debt_id: int, creditor_name: str, 
                              amount: float, description: str):
         """
-        Отправить уведомление о новом долге
-        
+        Отправить уведомление о новом долге с кнопками 'Я оплатил' и 'Напомнить позже'
         Args:
             debtor_id: ID должника
             debt_id: ID долга
@@ -1161,11 +1160,16 @@ class BotHandlers:
 
 Не забудьте вовремя рассчитаться!
 """
-        
+        # Клавиатура: две кнопки
+        keyboard = InlineKeyboardMarkup(row_width=2)
+        keyboard.add(
+            InlineKeyboardButton("💳 Оплачено", callback_data=f"pay_debt_{debt_id}"),
+            InlineKeyboardButton("⏰ Напомнить позже", callback_data=f"remind_later_{debt_id}")
+        )
         self.bot.send_message(
             debtor_id,
             message,
-            reply_markup=get_debt_actions_keyboard(debt_id)
+            reply_markup=keyboard
         )
     
     def send_payment_confirmation_request(self, creditor_id: int, payment_id: int, 
@@ -1359,18 +1363,27 @@ class BotHandlers:
 
 Чек прилагается ниже.
 """
+            # Клавиатура: две кнопки
+            keyboard = InlineKeyboardMarkup(row_width=2)
+            keyboard.add(
+                InlineKeyboardButton("💳 Оплачено", callback_data=f"pay_debt_{debt_id}"),
+                InlineKeyboardButton("⏰ Напомнить позже", callback_data=f"remind_later_{debt_id}")
+            )
+
             # Отправляем файл должнику
             if file_type == 'photo':
                 self.bot.send_photo(
                     debtor_id,
                     file_id,
-                    caption=msg
+                    caption=msg,
+                    reply_markup=keyboard
                 )
             else:
                 self.bot.send_document(
                     debtor_id,
                     file_id,
-                    caption=msg
+                    caption=msg,
+                    reply_markup=keyboard
                 )
             # Кредитору обычное подтверждение
             self.bot.send_message(
