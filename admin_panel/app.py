@@ -110,9 +110,21 @@ def main():
         "Пользователи": "users",
         "Настройки": "settings"
     }
-    
-    selected_page = st.sidebar.selectbox("Выберите страницу", list(pages.keys()))
-    
+    page_names = list(pages.keys())
+    # Получаем query-параметры
+    query_params = st.experimental_get_query_params()
+    default_page = query_params.get("page", [page_names[0]])[0]
+    if default_page not in page_names:
+        default_page = page_names[0]
+    # Выбор страницы с сохранением в query-параметрах
+    selected_page = st.sidebar.selectbox(
+        "Выберите страницу",
+        page_names,
+        index=page_names.index(default_page),
+        key="page_select"
+    )
+    # Сохраняем выбор в query-параметрах
+    st.experimental_set_query_params(page=selected_page)
     # Отображаем выбранную страницу
     if selected_page == "Обзор":
         show_overview(db)
