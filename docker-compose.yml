@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  lunchbot:
+    build: .
+    container_name: lunchbot
+    env_file:
+      - .env
+    ports:
+      - "8501:8501"  # Streamlit admin panel
+    restart: unless-stopped
+    volumes:
+      - ./:/app
+    # Если нужно, можно добавить:
+    # tty: true
+    # stdin_open: true 
