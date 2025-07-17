@@ -315,7 +315,7 @@ class BotHandlers:
                 
             elif data.startswith("remind_later_"):
                 debt_id = int(data.split("_")[2])
-                self.handle_remind_later(user_id, debt_id)
+                self.handle_remind_later(user_id, debt_id, call.message.message_id)
                 
             # Оплата всех долгов
             elif data == "pay_all_debts":
@@ -886,25 +886,23 @@ class BotHandlers:
         # Сохраняем message_id для последующего удаления
         self.add_message_to_state(user_id, message.message_id)
     
-    def handle_remind_later(self, user_id: int, debt_id: int):
+    def handle_remind_later(self, user_id: int, debt_id: int, message_id: Optional[int] = None):
         """
         Обработка напоминания позже
-        
         Args:
             user_id: ID пользователя
             debt_id: ID долга
+            message_id: ID сообщения с кнопками (если есть)
         """
-        # Просто удаляем сообщение с долгом (последнее сообщение)
-        # и отправляем короткое подтверждение
-        try:
-            # Получаем последнее сообщение пользователя (callback)
-            # Обычно это call.message.message_id, но тут только user_id и debt_id
-            # Поэтому ищем последнее сообщение в чате (или передаем message_id в callback)
-            # Для простоты: просим callback передавать message_id
-            # Но сейчас удаляем все сообщения из состояния (если есть)
+        # Удаляем только сообщение с кнопками, если message_id передан
+        if message_id:
+            try:
+                self.bot.delete_message(user_id, message_id)
+            except Exception:
+                pass
+        else:
+            # Если message_id не передан, fallback: удаляем все сообщения из состояния
             self.clear_messages_from_state(user_id)
-        except Exception:
-            pass
         self.bot.send_message(
             user_id,
             "⏰ Хорошо, напомним позже!"
