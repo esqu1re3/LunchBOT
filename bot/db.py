@@ -7,6 +7,7 @@ from typing import Optional, List, Dict, Any
 from datetime import datetime, timedelta
 import secrets
 import logging
+import hashlib
 
 logger = logging.getLogger(__name__)
 
@@ -557,6 +558,29 @@ class DatabaseManager:
         except Exception as e:
             logger.error(f"Ошибка установки настройки: {e}")
             return False
+    
+    def set_admin_password(self, password: str) -> bool:
+        """
+        Сохраняет хэш пароля администратора в settings (ключ 'admin_password_hash')
+        Args:
+            password: Пароль в открытом виде
+        Returns:
+            True если успешно
+        """
+        password_hash = hashlib.sha256(password.encode('utf-8')).hexdigest()
+        return self.set_setting('admin_password_hash', password_hash)
+
+    def check_admin_password(self, password: str) -> bool:
+        """
+        Проверяет пароль администратора по хэшу
+        Args:
+            password: Введённый пароль
+        Returns:
+            True если пароль верный
+        """
+        password_hash = hashlib.sha256(password.encode('utf-8')).hexdigest()
+        stored_hash = self.get_setting('admin_password_hash')
+        return stored_hash == password_hash
     
     # === Напоминания ===
     

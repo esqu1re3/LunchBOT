@@ -10,6 +10,7 @@ from typing import List, Dict, Any
 from dotenv import load_dotenv
 from st_cookies_manager import EncryptedCookieManager
 import pytz
+import logging
 
 # Загрузка переменных окружения
 load_dotenv()
@@ -269,37 +270,42 @@ def show_debts(db: DatabaseManager):
         users = db.get_all_users()
         
         if len(users) >= 2:
-            # Форма создания долга
             with st.form("create_debt_form"):
+                user_options = {f"{user['first_name']} (@{user['username']})": user['user_id'] for user in users}
+                user_names = list(user_options.keys())
+                # Инициализация session_state
+                if 'selected_debtor' not in st.session_state or st.session_state['selected_debtor'] not in user_names:
+                    st.session_state['selected_debtor'] = user_names[0]
+                if 'selected_creditor' not in st.session_state or st.session_state['selected_creditor'] not in user_names:
+                    st.session_state['selected_creditor'] = user_names[1] if len(user_names) > 1 else user_names[0]
                 col1, col2 = st.columns(2)
-                
                 with col1:
-                    # Выбор должника
-                    debtor_options = {f"{user['first_name']} (@{user['username']})": user['user_id'] 
-                                    for user in users}
-                    selected_debtor = st.selectbox("Должник", list(debtor_options.keys()))
-                    debtor_id = debtor_options[selected_debtor]
-                    
-                    # Сумма
-                    amount = st.number_input("Сумма долга", min_value=0.01, value=100.0, step=0.01)
-                
+                    selected_debtor = st.selectbox(
+                        "Должник",
+                        user_names,
+                        key="debtor_select",
+                        index=user_names.index(st.session_state['selected_debtor']) if st.session_state['selected_debtor'] in user_names else 0
+                    )
+                    st.session_state['selected_debtor'] = selected_debtor
+                    debtor_id = user_options[selected_debtor]
                 with col2:
-                    # Выбор кредитора
-                    creditor_options = {f"{user['first_name']} (@{user['username']})": user['user_id'] 
-                                      for user in users if user['user_id'] != debtor_id}
-                    selected_creditor = st.selectbox("Кредитор", list(creditor_options.keys()))
-                    creditor_id = creditor_options[selected_creditor]
-                    
-                    # Описание
-                    description = st.text_input("Описание (необязательно)")
-                
-                # Кнопка создания
+                    selected_creditor = st.selectbox(
+                        "Кредитор",
+                        user_names,
+                        key="creditor_select",
+                        index=user_names.index(st.session_state['selected_creditor']) if st.session_state['selected_creditor'] in user_names else 0
+                    )
+                    st.session_state['selected_creditor'] = selected_creditor
+                    creditor_id = user_options[selected_creditor]
+                amount = st.number_input("Сумма долга", min_value=0.01, value=100.0, step=0.01)
+                description = st.text_input("Описание (необязательно)")
                 if st.form_submit_button("Создать долг"):
                     if debtor_id == creditor_id:
                         st.error("Должник и кредитор не могут быть одним лицом!")
                     else:
                         debt_id = db.create_debt(debtor_id, creditor_id, amount, description)
                         if debt_id:
+                            logger.info(f"[ADMIN] Добавлен долг: debtor_id={debtor_id}, creditor_id={creditor_id}, amount={amount}, description={description}, debt_id={debt_id}")
                             st.success(f"Долг создан! ID: {debt_id}")
                             st.rerun()
                         else:
@@ -530,4 +536,7 @@ def show_settings(db: DatabaseManager):
         st.metric("Ссылки активации", links_count)
 
 if __name__ == "__main__":
+    # Настройка логирования для админки
+    logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger("admin_panel")
     main() 
