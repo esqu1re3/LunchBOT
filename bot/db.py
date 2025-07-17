@@ -40,10 +40,26 @@ class DatabaseManager:
                         
                 conn.commit()
                 logger.info("База данных инициализирована успешно")
-                
+            # После создания таблиц вызываем миграцию
+            self.migrate_database()
         except Exception as e:
             logger.error(f"Ошибка инициализации базы данных: {e}")
             raise
+    
+    def migrate_database(self):
+        """Автоматическая миграция структуры БД (добавление новых столбцов)"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                # Проверяем наличие cancel_reason в payments
+                cursor.execute("PRAGMA table_info(payments);")
+                columns = [row[1] for row in cursor.fetchall()]
+                if 'cancel_reason' not in columns:
+                    cursor.execute("ALTER TABLE payments ADD COLUMN cancel_reason TEXT;")
+                    conn.commit()
+                    logger.info("Миграция: добавлен столбец cancel_reason в payments")
+        except Exception as e:
+            logger.error(f"Ошибка миграции БД: {e}")
     
     def get_connection(self) -> sqlite3.Connection:
         """Получить соединение с базой данных"""
@@ -453,28 +469,27 @@ class DatabaseManager:
             logger.error(f"Ошибка подтверждения платежа: {e}")
             return False
     
-    def dispute_payment(self, payment_id: int) -> bool:
+    def cancel_payment(self, payment_id: int, reason: str) -> bool:
         """
-        Оспорить платеж
-        
+        Отменить подтверждение платежа с указанием причины
         Args:
             payment_id: ID платежа
-            
+            reason: Причина отмены
         Returns:
-            True если платеж оспорен успешно
+            True если отмена прошла успешно
         """
         try:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute("""
                     UPDATE payments 
-                    SET status = 'Disputed'
+                    SET status = 'Cancelled', cancel_reason = ?
                     WHERE id = ?
-                """, (payment_id,))
+                """, (reason, payment_id))
                 conn.commit()
                 return cursor.rowcount > 0
         except Exception as e:
-            logger.error(f"Ошибка оспаривания платежа: {e}")
+            logger.error(f"Ошибка отмены платежа: {e}")
             return False
     
     def get_payment(self, payment_id: int) -> Optional[Dict[str, Any]]:

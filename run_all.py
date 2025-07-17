@@ -63,15 +63,14 @@ def check_dependencies():
         sys.exit(1)
 
 def init_database():
-    """Инициализация базы данных"""
+    """Инициализация базы данных (создание таблиц и новых полей)"""
     try:
         from bot.db import DatabaseManager
         logger.info("Инициализация базы данных...")
-        
         db = DatabaseManager()
+        db.migrate_database()  # Автоматическая миграция структуры
         logger.info("База данных инициализирована успешно")
         return db
-        
     except Exception as e:
         logger.error(f"Ошибка инициализации базы данных: {e}")
         sys.exit(1)
@@ -168,7 +167,7 @@ def main():
     # Проверяем зависимости
     check_dependencies()
     
-    # Инициализируем базу данных
+    # Инициализируем базу данных (создаёт все таблицы и новые поля)
     db = init_database()
     
     # Получаем токен бота

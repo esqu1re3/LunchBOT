@@ -147,22 +147,24 @@ PAYMENT_CONFIRMED = """
 Спасибо за использование бота!
 """
 
-PAYMENT_DISPUTED = """
-⚠️ Оплата оспорена!
+PAYMENT_CANCEL_REASON_REQUEST = """
+❌ Вы собираетесь отменить подтверждение оплаты.
 
-Долг на сумму {amount} сом оспорен.
-Администратор получил уведомление.
+Пожалуйста, укажите причину отмены (например, сумма не совпадает, чек некорректен и т.д.):
 """
 
-DEBT_DISPUTED_ADMIN = """
-⚠️ Долг оспорен!
+PAYMENT_CANCELLED_DEBTOR = """
+❌ Ваш чек не был принят!
 
-Кредитор: {creditor_name}
-Должник: {debtor_name}
-Сумма: {amount} сом
-Описание: {description}
+Причина отмены: {reason}
 
-Требуется вмешательство администратора.
+Пожалуйста, попробуйте оплатить долг повторно и приложите корректный чек.
+"""
+
+PAYMENT_CANCELLED = """
+❌ Подтверждение отменено!
+
+Платёж отклонён. Долг остаётся открытым.
 """
 
 ERROR_NOT_ACTIVATED = """
@@ -315,7 +317,7 @@ def get_payment_confirmation_keyboard(payment_id: int) -> InlineKeyboardMarkup:
     keyboard = InlineKeyboardMarkup(row_width=2)
     keyboard.add(
         InlineKeyboardButton("✅ Подтвердить", callback_data=f"confirm_payment_{payment_id}"),
-        InlineKeyboardButton("❌ Оспорить", callback_data=f"dispute_payment_{payment_id}")
+        InlineKeyboardButton("❌ Отменить подтверждение", callback_data=f"cancel_payment_{payment_id}")
     )
     return keyboard
 

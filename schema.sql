@@ -46,7 +46,8 @@ CREATE TABLE IF NOT EXISTS payments (
     debtor_id INTEGER NOT NULL,       -- Кто оплатил
     creditor_id INTEGER NOT NULL,     -- Кто подтверждает
     file_id TEXT,                     -- ID файла чека в Telegram
-    status TEXT DEFAULT 'Pending',    -- Статус: Pending, Confirmed, Disputed
+    status TEXT DEFAULT 'Pending',    -- Статус: Pending, Confirmed, Cancelled
+    cancel_reason TEXT,               -- Причина отмены подтверждения
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     confirmed_at TIMESTAMP,           -- Дата подтверждения
     FOREIGN KEY (debt_id) REFERENCES debts (id),

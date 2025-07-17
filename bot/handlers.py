@@ -326,9 +326,15 @@ class BotHandlers:
                 payment_id = int(data.split("_")[2])
                 self.handle_confirm_payment(user_id, payment_id, call.message)
                 
-            elif data.startswith("dispute_payment_"):
-                payment_id = int(data.split("_")[2])
-                self.handle_dispute_payment(user_id, payment_id, call.message)
+            elif data.startswith("cancel_payment_"):
+                payment_id = int(data.split("_", 2)[2])
+                self.set_user_state(user_id, 'waiting_cancel_reason', {'payment_id': payment_id, 'message_id': call.message.message_id})
+                self.bot.send_message(user_id, PAYMENT_CANCEL_REASON_REQUEST)
+            elif data.startswith("cancel_multiple_payments_"):
+                payment_ids_str = data.split("_", 3)[3]
+                payment_ids = [int(pid) for pid in payment_ids_str.split(",")]
+                self.set_user_state(user_id, 'waiting_cancel_reason_multiple', {'payment_ids': payment_ids, 'message_id': call.message.message_id})
+                self.bot.send_message(user_id, PAYMENT_CANCEL_REASON_REQUEST)
                 
             # Подтверждение множественных платежей
             elif data.startswith("confirm_multiple_payments_"):
@@ -571,6 +577,42 @@ class BotHandlers:
                 pass
             
             self.handle_debt_description_input(user_id, message.text)
+
+        elif user_state.get('state') == 'waiting_cancel_reason':
+            reason = message.text.strip()
+            payment_id = user_state['data']['payment_id']
+            payment = self.db.get_payment(payment_id)
+            if not payment:
+                self.bot.send_message(user_id, ERROR_GENERAL)
+                self.clear_user_state(user_id)
+                return
+            if self.db.cancel_payment(payment_id, reason):
+                debt = self.db.get_debt(payment['debt_id'])
+                self.bot.send_message(payment['debtor_id'], PAYMENT_CANCELLED_DEBTOR.format(reason=reason))
+                try:
+                    self.bot.edit_message_text(PAYMENT_CANCELLED, chat_id=user_id, message_id=user_state['data']['message_id'])
+                except:
+                    self.bot.send_message(user_id, PAYMENT_CANCELLED)
+            else:
+                self.bot.send_message(user_id, ERROR_GENERAL)
+            self.clear_user_state(user_id)
+            return
+        elif user_state.get('state') == 'waiting_cancel_reason_multiple':
+            reason = message.text.strip()
+            payment_ids = user_state['data']['payment_ids']
+            notified_debtors = set()
+            for payment_id in payment_ids:
+                payment = self.db.get_payment(payment_id)
+                if payment and self.db.cancel_payment(payment_id, reason):
+                    if payment['debtor_id'] not in notified_debtors:
+                        self.bot.send_message(payment['debtor_id'], PAYMENT_CANCELLED_DEBTOR.format(reason=reason))
+                        notified_debtors.add(payment['debtor_id'])
+            try:
+                self.bot.edit_message_text(PAYMENT_CANCELLED, chat_id=user_id, message_id=user_state['data']['message_id'])
+            except:
+                self.bot.send_message(user_id, PAYMENT_CANCELLED)
+            self.clear_user_state(user_id)
+            return
     
     # === Методы для работы с долгами ===
     
@@ -961,62 +1003,6 @@ class BotHandlers:
         else:
             self.bot.send_message(user_id, ERROR_GENERAL)
     
-    def handle_dispute_payment(self, user_id: int, payment_id: int, message):
-        """
-        Обработка оспаривания платежа
-        
-        Args:
-            user_id: ID пользователя
-            payment_id: ID платежа
-            message: Сообщение с кнопками
-        """
-        payment = self.db.get_payment(payment_id)
-        
-        if not payment or payment['creditor_id'] != user_id:
-            self.bot.send_message(user_id, "❌ Платеж не найден!")
-            return
-        
-        # Оспариваем платеж
-        if self.db.dispute_payment(payment_id):
-            # Оспариваем долг
-            self.db.dispute_debt(payment['debt_id'])
-            
-            debt = self.db.get_debt(payment['debt_id'])
-            
-            # Уведомляем должника
-            self.bot.send_message(
-                payment['debtor_id'],
-                PAYMENT_DISPUTED.format(amount=debt['amount'])
-            )
-            
-            # Редактируем сообщение, убираем кнопки
-            try:
-                self.bot.edit_message_text(
-                    f"⚠️ Оплата оспорена!\n\nДолг на сумму {debt['amount']} сом оспорен.\nАдминистратор получил уведомление.",
-                    chat_id=user_id,
-                    message_id=message.message_id
-                )
-            except:
-                self.bot.send_message(
-                    user_id,
-                    PAYMENT_DISPUTED.format(amount=debt['amount'])
-                )
-            
-            # Уведомляем админа
-            admin_chat_id = self.db.get_setting('admin_chat_id')
-            if admin_chat_id:
-                self.bot.send_message(
-                    admin_chat_id,
-                    DEBT_DISPUTED_ADMIN.format(
-                        creditor_name=debt['creditor_name'],
-                        debtor_name=debt['debtor_name'],
-                        amount=debt['amount'],
-                        description=debt['description'] or 'без описания'
-                    )
-                )
-        else:
-            self.bot.send_message(user_id, ERROR_GENERAL)
-    
     def handle_confirm_multiple_payments(self, user_id: int, payment_ids: List[int], message):
         """
         Обработка подтверждения множественных платежей
@@ -1131,8 +1117,6 @@ class BotHandlers:
 {chr(10).join(debt_details)}
 
 Общая сумма: {total_amount:.2f} сом
-
-Администратор получил уведомление.
 """
             
             self.bot.send_message(
@@ -1143,7 +1127,7 @@ class BotHandlers:
             # Редактируем сообщение кредитора
             try:
                 self.bot.edit_message_text(
-                    f"⚠️ Все платежи оспорены!\n\nОбщая сумма: {total_amount:.2f} сом\nАдминистратор получил уведомление.",
+                    f"⚠️ Все платежи оспорены!\n\nОбщая сумма: {total_amount:.2f} сом",
                     chat_id=user_id,
                     message_id=message.message_id
                 )
@@ -1152,20 +1136,6 @@ class BotHandlers:
                     user_id,
                     f"⚠️ Все платежи оспорены! Общая сумма: {total_amount:.2f} сом"
                 )
-            
-            # Уведомляем админа
-            admin_chat_id = self.db.get_setting('admin_chat_id')
-            if admin_chat_id:
-                for debt in disputed_payments:
-                    self.bot.send_message(
-                        admin_chat_id,
-                        DEBT_DISPUTED_ADMIN.format(
-                            creditor_name=debt['creditor_name'],
-                            debtor_name=debt['debtor_name'],
-                            amount=debt['amount'],
-                            description=debt['description'] or 'без описания'
-                        )
-                    )
         else:
             self.bot.send_message(user_id, ERROR_GENERAL)
     
@@ -1301,7 +1271,6 @@ class BotHandlers:
         
         # Создаем клавиатуру для подтверждения всех платежей
         keyboard = InlineKeyboardMarkup(row_width=2)
-        
         # Кнопка для подтверждения всех платежей
         payment_ids = [str(item['payment_id']) for item in creditor_debts]
         keyboard.add(
@@ -1310,24 +1279,25 @@ class BotHandlers:
                 callback_data=f"confirm_multiple_payments_{','.join(payment_ids)}"
             ),
             InlineKeyboardButton(
-                "❌ Оспорить все",
-                callback_data=f"dispute_multiple_payments_{','.join(payment_ids)}"
+                "❌ Отменить подтверждение для всех",
+                callback_data=f"cancel_multiple_payments_{','.join(payment_ids)}"
             )
         )
-        
         # Кнопки для отдельных платежей
         for item in creditor_debts:
             debt = item['debt']
             payment_id = item['payment_id']
             description = debt['description'] or 'без описания'
-            
             keyboard.add(
                 InlineKeyboardButton(
                     f"✅ {debt['amount']:.2f} сом ({description})",
                     callback_data=f"confirm_payment_{payment_id}"
+                ),
+                InlineKeyboardButton(
+                    f"❌ Отменить подтверждение",
+                    callback_data=f"cancel_payment_{payment_id}"
                 )
             )
-        
         self.bot.send_message(
             creditor_id,
             message,
