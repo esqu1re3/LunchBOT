@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 import secrets
 import logging
 import hashlib
+import json
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +60,26 @@ class DatabaseManager:
                     cursor.execute("ALTER TABLE payments ADD COLUMN cancel_reason TEXT;")
                     conn.commit()
                     logger.info("Миграция: добавлен столбец cancel_reason в payments")
+                
+                # Проверяем наличие таблицы processed_operations
+                cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='processed_operations';")
+                if not cursor.fetchone():
+                    cursor.execute("""
+                        CREATE TABLE processed_operations (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            operation_hash TEXT UNIQUE NOT NULL,
+                            operation_type TEXT NOT NULL,
+                            user_id INTEGER NOT NULL,
+                            operation_data TEXT,
+                            result_id INTEGER,
+                            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                            expires_at TIMESTAMP
+                        )
+                    """)
+                    cursor.execute("CREATE INDEX idx_processed_operations_hash ON processed_operations(operation_hash);")
+                    cursor.execute("CREATE INDEX idx_processed_operations_expires ON processed_operations(expires_at);")
+                    conn.commit()
+                    logger.info("Миграция: создана таблица processed_operations")
         except Exception as e:
             logger.error(f"Ошибка миграции БД: {e}")
     
@@ -67,6 +88,169 @@ class DatabaseManager:
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row  # Для удобного доступа к колонкам
         return conn
+    
+    # === Методы для идемпотентности ===
+    
+    def create_operation_hash(self, operation_type: str, user_id: int, **kwargs) -> str:
+        """
+        Создать хэш операции для идемпотентности
+        
+        Args:
+            operation_type: Тип операции
+            user_id: ID пользователя
+            **kwargs: Дополнительные параметры операции
+            
+        Returns:
+            Хэш операции
+        """
+        # Создаем строку для хэширования
+        hash_data = {
+            'operation_type': operation_type,
+            'user_id': user_id,
+            **kwargs
+        }
+        
+        # Сортируем ключи для консистентности
+        sorted_data = json.dumps(hash_data, sort_keys=True)
+        
+        # Создаем SHA-256 хэш
+        return hashlib.sha256(sorted_data.encode('utf-8')).hexdigest()
+    
+    def check_operation_processed(self, operation_hash: str) -> Optional[Dict[str, Any]]:
+        """
+        Проверить, была ли операция уже обработана
+        
+        Args:
+            operation_hash: Хэш операции
+            
+        Returns:
+            Данные обработанной операции или None
+        """
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT * FROM processed_operations 
+                    WHERE operation_hash = ? AND (expires_at IS NULL OR datetime(expires_at) > datetime('now'))
+                """, (operation_hash,))
+                row = cursor.fetchone()
+                return dict(row) if row else None
+        except Exception as e:
+            logger.error(f"Ошибка проверки обработанной операции: {e}")
+            return None
+    
+    def record_processed_operation(self, operation_hash: str, operation_type: str, 
+                                 user_id: int, operation_data: Dict[str, Any], 
+                                 result_id: Optional[int] = None, 
+                                 expires_minutes: int = 5) -> bool:
+        """
+        Записать обработанную операцию
+        
+        Args:
+            operation_hash: Хэш операции
+            operation_type: Тип операции
+            user_id: ID пользователя
+            operation_data: Данные операции
+            result_id: ID результата
+            expires_minutes: Время истечения в минутах
+            
+        Returns:
+            True если запись успешна
+        """
+        try:
+            expires_at = datetime.now() + timedelta(minutes=expires_minutes)
+            
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    INSERT OR REPLACE INTO processed_operations 
+                    (operation_hash, operation_type, user_id, operation_data, result_id, expires_at)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                """, (operation_hash, operation_type, user_id, 
+                      json.dumps(operation_data), result_id, expires_at))
+                conn.commit()
+                return True
+        except Exception as e:
+            logger.error(f"Ошибка записи обработанной операции: {e}")
+            return False
+    
+    def cleanup_expired_operations(self) -> int:
+        """
+        Очистить устаревшие записи операций
+        
+        Returns:
+            Количество удаленных записей
+        """
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    DELETE FROM processed_operations 
+                    WHERE expires_at IS NOT NULL AND datetime(expires_at) <= datetime('now')
+                """)
+                conn.commit()
+                return cursor.rowcount
+        except Exception as e:
+            logger.error(f"Ошибка очистки устаревших операций: {e}")
+            return 0
+    
+    def check_duplicate_debt(self, debtor_id: int, creditor_id: int, 
+                           amount: float, description: str = None, 
+                           minutes_window: int = 5) -> Optional[int]:
+        """
+        Проверить дублирование долга в течение временного окна
+        
+        Args:
+            debtor_id: ID должника
+            creditor_id: ID кредитора
+            amount: Сумма долга
+            description: Описание долга
+            minutes_window: Временное окно в минутах
+            
+        Returns:
+            ID существующего долга или None
+        """
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT id FROM debts 
+                    WHERE debtor_id = ? AND creditor_id = ? AND amount = ? 
+                    AND (description = ? OR (description IS NULL AND ? IS NULL))
+                    AND datetime(created_at) > datetime('now', '-{} minutes') 
+                    AND status = 'Open'
+                    ORDER BY created_at DESC LIMIT 1
+                """.format(minutes_window), (debtor_id, creditor_id, amount, description, description))
+                row = cursor.fetchone()
+                return row[0] if row else None
+        except Exception as e:
+            logger.error(f"Ошибка проверки дублирования долга: {e}")
+            return None
+    
+    def check_duplicate_payment(self, debt_id: int, debtor_id: int) -> Optional[int]:
+        """
+        Проверить дублирование платежа для долга
+        
+        Args:
+            debt_id: ID долга
+            debtor_id: ID должника
+            
+        Returns:
+            ID существующего платежа или None
+        """
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT id FROM payments 
+                    WHERE debt_id = ? AND debtor_id = ? AND status IN ('Pending', 'Confirmed')
+                    ORDER BY created_at DESC LIMIT 1
+                """, (debt_id, debtor_id))
+                row = cursor.fetchone()
+                return row[0] if row else None
+        except Exception as e:
+            logger.error(f"Ошибка проверки дублирования платежа: {e}")
+            return None
     
     # === Работа с пользователями ===
     
@@ -264,7 +448,7 @@ class DatabaseManager:
     def create_debt(self, debtor_id: int, creditor_id: int, amount: float, 
                    description: str = None) -> Optional[int]:
         """
-        Создать долг
+        Создать долг с проверкой идемпотентности
         
         Args:
             debtor_id: ID должника
@@ -276,14 +460,41 @@ class DatabaseManager:
             ID созданного долга или None
         """
         try:
+            # Проверяем дублирование в течение 5 минут
+            existing_debt_id = self.check_duplicate_debt(debtor_id, creditor_id, amount, description)
+            if existing_debt_id:
+                logger.info(f"Найден дублирующий долг {existing_debt_id}, возвращаем его")
+                return existing_debt_id
+            
+            # Создаем хэш операции
+            operation_hash = self.create_operation_hash(
+                'debt_creation', creditor_id,
+                debtor_id=debtor_id, amount=amount, description=description
+            )
+            
+            # Проверяем, была ли операция уже обработана
+            processed = self.check_operation_processed(operation_hash)
+            if processed:
+                logger.info(f"Операция создания долга уже обработана: {processed['result_id']}")
+                return processed['result_id']
+            
             with self.get_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute("""
                     INSERT INTO debts (debtor_id, creditor_id, amount, description)
                     VALUES (?, ?, ?, ?)
                 """, (debtor_id, creditor_id, amount, description))
+                debt_id = cursor.lastrowid
                 conn.commit()
-                return cursor.lastrowid
+                
+                # Записываем операцию как обработанную
+                self.record_processed_operation(
+                    operation_hash, 'debt_creation', creditor_id,
+                    {'debtor_id': debtor_id, 'amount': amount, 'description': description},
+                    debt_id
+                )
+                
+                return debt_id
         except Exception as e:
             logger.error(f"Ошибка создания долга: {e}")
             return None
@@ -422,7 +633,7 @@ class DatabaseManager:
     def create_payment(self, debt_id: int, debtor_id: int, creditor_id: int, 
                       file_id: str = None) -> Optional[int]:
         """
-        Создать платеж
+        Создать платеж с проверкой идемпотентности
         
         Args:
             debt_id: ID долга
@@ -434,21 +645,48 @@ class DatabaseManager:
             ID созданного платежа или None
         """
         try:
+            # Проверяем дублирование платежа
+            existing_payment_id = self.check_duplicate_payment(debt_id, debtor_id)
+            if existing_payment_id:
+                logger.info(f"Найден дублирующий платеж {existing_payment_id}, возвращаем его")
+                return existing_payment_id
+            
+            # Создаем хэш операции
+            operation_hash = self.create_operation_hash(
+                'payment_creation', debtor_id,
+                debt_id=debt_id, creditor_id=creditor_id
+            )
+            
+            # Проверяем, была ли операция уже обработана
+            processed = self.check_operation_processed(operation_hash)
+            if processed:
+                logger.info(f"Операция создания платежа уже обработана: {processed['result_id']}")
+                return processed['result_id']
+            
             with self.get_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute("""
                     INSERT INTO payments (debt_id, debtor_id, creditor_id, file_id)
                     VALUES (?, ?, ?, ?)
                 """, (debt_id, debtor_id, creditor_id, file_id))
+                payment_id = cursor.lastrowid
                 conn.commit()
-                return cursor.lastrowid
+                
+                # Записываем операцию как обработанную
+                self.record_processed_operation(
+                    operation_hash, 'payment_creation', debtor_id,
+                    {'debt_id': debt_id, 'creditor_id': creditor_id},
+                    payment_id
+                )
+                
+                return payment_id
         except Exception as e:
             logger.error(f"Ошибка создания платежа: {e}")
             return None
     
     def confirm_payment(self, payment_id: int) -> bool:
         """
-        Подтвердить платеж
+        Подтвердить платеж с проверкой идемпотентности
         
         Args:
             payment_id: ID платежа
@@ -457,15 +695,46 @@ class DatabaseManager:
             True если платеж подтвержден успешно
         """
         try:
+            # Получаем информацию о платеже
+            payment = self.get_payment(payment_id)
+            if not payment:
+                return False
+            
+            # Проверяем, не подтвержден ли уже платеж
+            if payment['status'] == 'Confirmed':
+                logger.info(f"Платеж {payment_id} уже подтвержден")
+                return True
+            
+            # Создаем хэш операции
+            operation_hash = self.create_operation_hash(
+                'payment_confirmation', payment['creditor_id'],
+                payment_id=payment_id
+            )
+            
+            # Проверяем, была ли операция уже обработана
+            processed = self.check_operation_processed(operation_hash)
+            if processed:
+                logger.info(f"Операция подтверждения платежа уже обработана")
+                return True
+            
             with self.get_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute("""
                     UPDATE payments 
                     SET status = 'Confirmed', confirmed_at = ?
-                    WHERE id = ?
+                    WHERE id = ? AND status = 'Pending'
                 """, (datetime.now(), payment_id))
                 conn.commit()
-                return cursor.rowcount > 0
+                
+                if cursor.rowcount > 0:
+                    # Записываем операцию как обработанную
+                    self.record_processed_operation(
+                        operation_hash, 'payment_confirmation', payment['creditor_id'],
+                        {'payment_id': payment_id}, payment_id
+                    )
+                    return True
+                
+                return False
         except Exception as e:
             logger.error(f"Ошибка подтверждения платежа: {e}")
             return False
@@ -491,6 +760,30 @@ class DatabaseManager:
                 return cursor.rowcount > 0
         except Exception as e:
             logger.error(f"Ошибка отмены платежа: {e}")
+            return False
+    
+    def dispute_payment(self, payment_id: int) -> bool:
+        """
+        Оспорить платеж
+        
+        Args:
+            payment_id: ID платежа
+            
+        Returns:
+            True если платеж оспорен успешно
+        """
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    UPDATE payments 
+                    SET status = 'Disputed'
+                    WHERE id = ?
+                """, (payment_id,))
+                conn.commit()
+                return cursor.rowcount > 0
+        except Exception as e:
+            logger.error(f"Ошибка оспаривания платежа: {e}")
             return False
     
     def get_payment(self, payment_id: int) -> Optional[Dict[str, Any]]:
@@ -653,6 +946,8 @@ class DatabaseManager:
                 cursor.execute("DELETE FROM debts WHERE debtor_id = ? OR creditor_id = ?", (user_id, user_id))
                 # Удаляем ссылки активации
                 cursor.execute("DELETE FROM activation_links WHERE user_id = ?", (user_id,))
+                # Удаляем обработанные операции пользователя
+                cursor.execute("DELETE FROM processed_operations WHERE user_id = ?", (user_id,))
                 # Удаляем самого пользователя
                 cursor.execute("DELETE FROM users WHERE user_id = ?", (user_id,))
                 conn.commit()

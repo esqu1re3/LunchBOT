@@ -55,6 +55,18 @@ CREATE TABLE IF NOT EXISTS payments (
     FOREIGN KEY (creditor_id) REFERENCES users (user_id)
 );
 
+-- Таблица обработанных операций для идемпотентности
+CREATE TABLE IF NOT EXISTS processed_operations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    operation_hash TEXT UNIQUE NOT NULL,  -- Хэш операции для уникальности
+    operation_type TEXT NOT NULL,         -- Тип операции (debt_creation, payment_creation, payment_confirmation, etc.)
+    user_id INTEGER NOT NULL,             -- Кто выполнил операцию
+    operation_data TEXT,                  -- JSON с данными операции
+    result_id INTEGER,                    -- ID результата (debt_id, payment_id, etc.)
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    expires_at TIMESTAMP                  -- Время истечения записи
+);
+
 -- Таблица настроек
 CREATE TABLE IF NOT EXISTS settings (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -75,4 +87,6 @@ CREATE INDEX IF NOT EXISTS idx_debts_debtor ON debts(debtor_id);
 CREATE INDEX IF NOT EXISTS idx_debts_creditor ON debts(creditor_id);
 CREATE INDEX IF NOT EXISTS idx_debts_status ON debts(status);
 CREATE INDEX IF NOT EXISTS idx_payments_debt_id ON payments(debt_id);
-CREATE INDEX IF NOT EXISTS idx_activation_token ON activation_links(token); 
+CREATE INDEX IF NOT EXISTS idx_activation_token ON activation_links(token);
+CREATE INDEX IF NOT EXISTS idx_processed_operations_hash ON processed_operations(operation_hash);
+CREATE INDEX IF NOT EXISTS idx_processed_operations_expires ON processed_operations(expires_at); 

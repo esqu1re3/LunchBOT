@@ -39,6 +39,9 @@ class LunchBot:
         # Настраиваем планировщик напоминаний
         self.setup_reminder_scheduler()
         
+        # Настраиваем планировщик очистки
+        self.setup_cleanup_scheduler()
+        
         logger.info("Бот инициализирован")
     
     def setup_reminder_scheduler(self):
@@ -73,6 +76,32 @@ class LunchBot:
             
         except Exception as e:
             logger.error(f"Ошибка настройки планировщика: {e}")
+    
+    def setup_cleanup_scheduler(self):
+        """Настройка планировщика очистки устаревших операций"""
+        try:
+            # Добавляем задачу для очистки устаревших операций каждые 30 минут
+            self.scheduler.add_job(
+                func=self.cleanup_expired_operations,
+                trigger=IntervalTrigger(minutes=30),
+                id='cleanup_operations',
+                name='Очистка устаревших операций',
+                replace_existing=True
+            )
+            
+            logger.info("Планировщик очистки устаревших операций настроен (каждые 30 минут)")
+            
+        except Exception as e:
+            logger.error(f"Ошибка настройки планировщика очистки: {e}")
+    
+    def cleanup_expired_operations(self):
+        """Очистка устаревших операций"""
+        try:
+            deleted_count = self.db.cleanup_expired_operations()
+            if deleted_count > 0:
+                logger.info(f"Удалено {deleted_count} устаревших операций")
+        except Exception as e:
+            logger.error(f"Ошибка очистки устаревших операций: {e}")
     
     def send_reminders(self):
         """Отправка напоминаний о долгах"""

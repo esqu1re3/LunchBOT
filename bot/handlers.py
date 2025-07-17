@@ -3,7 +3,7 @@
 """
 import re
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, Any, Optional, List
 from telebot import TeleBot
 from telebot.types import Message, CallbackQuery, Document, PhotoSize, InlineKeyboardMarkup, InlineKeyboardButton
@@ -27,6 +27,7 @@ class BotHandlers:
         self.bot = bot
         self.db = db
         self.user_states: Dict[int, Dict[str, Any]] = {}
+        self.processed_callbacks: Dict[str, datetime] = {}  # Кэш обработанных callback
         
         # Регистрируем обработчики
         self.register_handlers()
@@ -49,6 +50,56 @@ class BotHandlers:
         
         # Обработка текстовых сообщений
         self.bot.message_handler(content_types=['text'])(self.handle_text)
+    
+    def cleanup_old_callbacks(self):
+        """Очистка старых записей callback (старше 1 минуты)"""
+        cutoff_time = datetime.now() - timedelta(minutes=1)
+        to_remove = [key for key, timestamp in self.processed_callbacks.items() if timestamp < cutoff_time]
+        for key in to_remove:
+            del self.processed_callbacks[key]
+    
+    def is_callback_processed(self, callback_id: str, user_id: int, data: str) -> bool:
+        """
+        Проверить, был ли callback уже обработан
+        
+        Args:
+            callback_id: ID callback-запроса
+            user_id: ID пользователя
+            data: Данные callback
+            
+        Returns:
+            True если callback уже обработан
+        """
+        # Очищаем старые записи
+        self.cleanup_old_callbacks()
+        
+        # Создаем уникальный ключ для callback
+        callback_key = f"{user_id}:{data}"
+        
+        # Проверяем, был ли уже обработан
+        if callback_key in self.processed_callbacks:
+            logger.info(f"Callback {callback_key} уже обработан")
+            return True
+        
+        # Отмечаем как обработанный
+        self.processed_callbacks[callback_key] = datetime.now()
+        return False
+    
+    def safe_answer_callback_query(self, callback_id: str, text: str = None):
+        """
+        Безопасный ответ на callback query с обработкой таймаутов
+        
+        Args:
+            callback_id: ID callback-запроса
+            text: Текст ответа
+        """
+        try:
+            self.bot.answer_callback_query(callback_id, text)
+        except Exception as e:
+            if "query is too old" in str(e).lower():
+                logger.warning(f"Callback query устарел: {callback_id}")
+            else:
+                logger.error(f"Ошибка ответа на callback query: {e}")
     
     def check_user_activation(self, user_id: int) -> bool:
         """
@@ -279,13 +330,20 @@ class BotHandlers:
     
     def handle_callback_query(self, call: CallbackQuery):
         """
-        Обработка callback-запросов
-        
+        Обработка callback-запросов с идемпотентностью
         Args:
             call: Callback-запрос
         """
         user_id = call.from_user.id
         data = call.data
+        
+        # Проверяем, не обработан ли уже этот callback
+        if self.is_callback_processed(call.id, user_id, data):
+            self.safe_answer_callback_query(call.id, "Операция уже выполнена")
+            return
+        
+        # Отвечаем на callback сразу, чтобы избежать таймаута
+        self.safe_answer_callback_query(call.id)
         
         try:
             # Основные действия
@@ -293,16 +351,12 @@ class BotHandlers:
                 self.clear_user_state(user_id)
                 self.clear_messages_from_state(user_id)
                 self.show_main_menu(user_id)
-                
             elif data == "new_debt":
                 self.start_new_debt_process(user_id)
-                
             elif data == "my_debts":
                 self.show_my_debts(user_id)
-                
             elif data == "who_owes_me":
                 self.show_who_owes_me(user_id)
-                
             elif data == "help":
                 self.bot.edit_message_text(
                     HELP_MESSAGE,
@@ -310,38 +364,30 @@ class BotHandlers:
                     message_id=call.message.message_id,
                     reply_markup=get_back_to_main_keyboard()
                 )
-                
             elif data == "cancel":
                 self.clear_user_state(user_id)
                 self.clear_messages_from_state(user_id)
                 self.show_main_menu(user_id)
-                
             elif data == "skip_description":
                 self.handle_debt_description_skip(user_id, call.message.message_id)
-                
             # Выбор пользователя
             elif data.startswith("select_user_"):
                 selected_user_id = int(data.split("_")[2])
                 self.handle_user_selection(user_id, selected_user_id, call.message.message_id)
-                
             # Действия с долгом
             elif data.startswith("pay_debt_"):
                 debt_id = int(data.split("_")[2])
                 self.handle_pay_debt(user_id, debt_id)
-                
             elif data.startswith("remind_later_"):
                 debt_id = int(data.split("_")[2])
                 self.handle_remind_later(user_id, debt_id, call.message.message_id)
-                
             # Оплата всех долгов
             elif data == "pay_all_debts":
                 self.handle_pay_all_debts(user_id)
-                
             # Подтверждение платежа
             elif data.startswith("confirm_payment_"):
                 payment_id = int(data.split("_")[2])
                 self.handle_confirm_payment(user_id, payment_id, call.message)
-                
             elif data.startswith("cancel_payment_"):
                 payment_id = int(data.split("_", 2)[2])
                 self.set_user_state(user_id, 'waiting_cancel_reason', {'payment_id': payment_id, 'message_id': call.message.message_id})
@@ -351,25 +397,22 @@ class BotHandlers:
                 payment_ids = [int(pid) for pid in payment_ids_str.split(",")]
                 self.set_user_state(user_id, 'waiting_cancel_reason_multiple', {'payment_ids': payment_ids, 'message_id': call.message.message_id})
                 self.bot.send_message(user_id, PAYMENT_CANCEL_REASON_REQUEST)
-                
             # Подтверждение множественных платежей
             elif data.startswith("confirm_multiple_payments_"):
                 payment_ids_str = data.split("_", 3)[3]
                 payment_ids = [int(pid) for pid in payment_ids_str.split(",")]
                 self.handle_confirm_multiple_payments(user_id, payment_ids, call.message)
-                
             elif data.startswith("dispute_multiple_payments_"):
                 payment_ids_str = data.split("_", 3)[3]
                 payment_ids = [int(pid) for pid in payment_ids_str.split(",")]
                 self.handle_dispute_multiple_payments(user_id, payment_ids, call.message)
-                
-            # Отвечаем на callback
-            self.bot.answer_callback_query(call.id)
-            
         except Exception as e:
-            logger.error(f"Ошибка обработки callback: {e}")
-            self.bot.answer_callback_query(call.id, "Произошла ошибка!")
-    
+            logger.error(f"Ошибка обработки callback {data}: {e}")
+            # Удаляем из кэша, чтобы можно было повторить
+            callback_key = f"{user_id}:{data}"
+            if callback_key in self.processed_callbacks:
+                del self.processed_callbacks[callback_key]
+
     # === Обработка файлов ===
     
     def handle_file(self, message: Message):
@@ -442,7 +485,7 @@ class BotHandlers:
                     self.clear_user_state(user_id)
                     return
                 
-                # Создаем платеж
+                # Создаем платеж (с идемпотентностью)
                 payment_id = self.db.create_payment(
                     debt_id=debt_id,
                     debtor_id=user_id,
@@ -451,7 +494,7 @@ class BotHandlers:
                 )
                 
                 if payment_id:
-                    # Отправляем уведомление кредитору
+                    # Отправляем уведомление кредитору (с проверкой дублирования)
                     self.send_payment_confirmation_request(
                         creditor_id=debt['creditor_id'],
                         payment_id=payment_id,
@@ -477,7 +520,7 @@ class BotHandlers:
                 debt_ids = user_state['data']['debt_ids']
                 total_amount = user_state['data']['total_amount']
                 
-                # Создаем платежи для каждого долга
+                # Создаем платежи для каждого долга (с идемпотентностью)
                 payment_ids = []
                 creditor_groups = {}  # Группируем долги по кредиторам
                 
@@ -977,7 +1020,7 @@ class BotHandlers:
     
     def handle_confirm_payment(self, user_id: int, payment_id: int, message):
         """
-        Обработка подтверждения платежа
+        Обработка подтверждения платежа с идемпотентностью
         
         Args:
             user_id: ID пользователя
@@ -990,7 +1033,7 @@ class BotHandlers:
             self.bot.send_message(user_id, "❌ Платеж не найден!")
             return
         
-        # Подтверждаем платеж
+        # Подтверждаем платеж (с идемпотентностью)
         if self.db.confirm_payment(payment_id):
             # Закрываем долг
             self.db.close_debt(payment['debt_id'])
@@ -1019,8 +1062,7 @@ class BotHandlers:
     
     def handle_confirm_multiple_payments(self, user_id: int, payment_ids: List[int], message):
         """
-        Обработка подтверждения множественных платежей
-        
+        Обработка подтверждения множественных платежей с идемпотентностью
         Args:
             user_id: ID пользователя
             payment_ids: Список ID платежей
@@ -1029,27 +1071,27 @@ class BotHandlers:
         confirmed_payments = []
         total_amount = 0
         debtor_name = ""
+        debtor_id = None
         
         for payment_id in payment_ids:
             payment = self.db.get_payment(payment_id)
-            
             if not payment or payment['creditor_id'] != user_id:
                 continue
             
-            # Подтверждаем платеж
+            # Подтверждаем платеж (с идемпотентностью)
             if self.db.confirm_payment(payment_id):
                 # Закрываем долг
                 self.db.close_debt(payment['debt_id'])
-                
                 debt = self.db.get_debt(payment['debt_id'])
                 confirmed_payments.append(debt)
                 total_amount += debt['amount']
-                
                 if not debtor_name:
                     debtor_name = debt['debtor_name']
+                if not debtor_id:
+                    debtor_id = debt['debtor_id']
         
         if confirmed_payments:
-            # Уведомляем должника
+            # Формируем одно итоговое сообщение для должника
             debt_details = []
             for debt in confirmed_payments:
                 description = debt['description'] or 'без описания'
@@ -1065,11 +1107,8 @@ class BotHandlers:
 
 Спасибо за использование бота!
 """
-            
-            self.bot.send_message(
-                confirmed_payments[0]['debtor_id'],
-                message_text
-            )
+            if debtor_id:
+                self.bot.send_message(debtor_id, message_text)
             
             # Редактируем сообщение кредитора
             try:
@@ -1166,6 +1205,17 @@ class BotHandlers:
             amount: Сумма долга
             description: Описание долга
         """
+        # Создаем хэш для проверки дублирования уведомлений
+        notification_hash = self.db.create_operation_hash(
+            'debt_notification', debtor_id,
+            debt_id=debt_id, creditor_name=creditor_name
+        )
+        
+        # Проверяем, не отправлялось ли уже уведомление
+        if self.db.check_operation_processed(notification_hash):
+            logger.info(f"Уведомление о долге {debt_id} уже отправлено должнику {debtor_id}")
+            return
+        
         message = f"""
 💰 Новый долг
 
@@ -1180,16 +1230,23 @@ class BotHandlers:
             InlineKeyboardButton("💳 Оплачено", callback_data=f"pay_debt_{debt_id}"),
             InlineKeyboardButton("⏰ Напомнить позже", callback_data=f"remind_later_{debt_id}")
         )
+        
         self.bot.send_message(
             debtor_id,
             message,
             reply_markup=keyboard
         )
+        
+        # Записываем уведомление как отправленное
+        self.db.record_processed_operation(
+            notification_hash, 'debt_notification', debtor_id,
+            {'debt_id': debt_id, 'creditor_name': creditor_name}
+        )
     
     def send_payment_confirmation_request(self, creditor_id: int, payment_id: int, 
                                         debt: Dict[str, Any], file_id: str, file_type: str = 'photo'):
         """
-        Отправить запрос на подтверждение платежа
+        Отправить запрос на подтверждение платежа с проверкой дублирования
         
         Args:
             creditor_id: ID кредитора
@@ -1198,6 +1255,17 @@ class BotHandlers:
             file_id: ID файла чека
             file_type: Тип файла (photo или document)
         """
+        # Создаем хэш для проверки дублирования уведомлений
+        notification_hash = self.db.create_operation_hash(
+            'payment_confirmation_request', creditor_id,
+            payment_id=payment_id, debt_id=debt['id']
+        )
+        
+        # Проверяем, не отправлялось ли уже уведомление
+        if self.db.check_operation_processed(notification_hash):
+            logger.info(f"Запрос подтверждения платежа {payment_id} уже отправлен кредитору {creditor_id}")
+            return
+        
         # Отправляем файл кредитору
         try:
             if file_type == 'photo':
@@ -1229,11 +1297,17 @@ class BotHandlers:
             ),
             reply_markup=get_payment_confirmation_keyboard(payment_id)
         )
+        
+        # Записываем уведомление как отправленное
+        self.db.record_processed_operation(
+            notification_hash, 'payment_confirmation_request', creditor_id,
+            {'payment_id': payment_id, 'debt_id': debt['id']}
+        )
     
     def send_multiple_payment_confirmation_request(self, creditor_id: int, creditor_debts: List[Dict[str, Any]], 
                                                  file_id: str, file_type: str = 'photo', total_amount: float = 0):
         """
-        Отправить запрос на подтверждение множественных платежей
+        Отправить запрос на подтверждение множественных платежей с проверкой дублирования
         
         Args:
             creditor_id: ID кредитора
@@ -1242,6 +1316,18 @@ class BotHandlers:
             file_type: Тип файла (photo или document)
             total_amount: Общая сумма всех долгов
         """
+        # Создаем хэш для проверки дублирования уведомлений
+        payment_ids = [item['payment_id'] for item in creditor_debts]
+        notification_hash = self.db.create_operation_hash(
+            'multiple_payment_confirmation_request', creditor_id,
+            payment_ids=sorted(payment_ids)  # Сортируем для консистентности
+        )
+        
+        # Проверяем, не отправлялось ли уже уведомление
+        if self.db.check_operation_processed(notification_hash):
+            logger.info(f"Запрос подтверждения множественных платежей уже отправлен кредитору {creditor_id}")
+            return
+        
         # Отправляем файл кредитору
         try:
             debtor_name = creditor_debts[0]['debt']['debtor_name']
@@ -1316,10 +1402,17 @@ class BotHandlers:
                     callback_data=f"cancel_payment_{payment_id}"
                 )
             )
+        
         self.bot.send_message(
             creditor_id,
             message,
             reply_markup=keyboard
+        )
+        
+        # Записываем уведомление как отправленное
+        self.db.record_processed_operation(
+            notification_hash, 'multiple_payment_confirmation_request', creditor_id,
+            {'payment_ids': payment_ids}
         )
     
     def send_debt_reminder(self, debt: Dict[str, Any]):
@@ -1355,19 +1448,22 @@ class BotHandlers:
         """
         user_state = self.get_user_state(user_id)
         data = user_state['data']
-        # Создаем долг
+        
+        # Создаем долг (с идемпотентностью)
         debt_id = self.db.create_debt(
             debtor_id=data['selected_user_id'],
             creditor_id=user_id,
             amount=data['amount'],
             description=data.get('description')
         )
+        
         if debt_id:
             debtor_id = data['selected_user_id']
             creditor = self.db.get_user(user_id)
             creditor_name = get_user_display_name(creditor)
             description = data.get('description') or 'без описания'
             amount = data['amount']
+            
             # Сообщение для должника
             msg = f"""
 💰 Новый долг
@@ -1399,6 +1495,7 @@ class BotHandlers:
                     caption=msg,
                     reply_markup=keyboard
                 )
+            
             # Кредитору обычное подтверждение
             self.bot.send_message(
                 user_id,
@@ -1407,6 +1504,7 @@ class BotHandlers:
             )
         else:
             self.bot.send_message(user_id, ERROR_GENERAL)
+        
         self.clear_user_state(user_id)
 
  

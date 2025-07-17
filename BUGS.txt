@@ -1,0 +1,312 @@
+`
+Traceback (most recent call last):
+  File "/app/bot/handlers.py", line 367, in handle_callback_query
+    self.bot.answer_callback_query(call.id)
+  File "/usr/local/lib/python3.10/site-packages/telebot/__init__.py", line 4634, in answer_callback_query
+    return apihelper.answer_callback_query(self.token, callback_query_id, text, show_alert, url, cache_time)
+  File "/usr/local/lib/python3.10/site-packages/telebot/apihelper.py", line 1625, in answer_callback_query
+    return _make_request(token, method_url, params=payload, method='post')
+  File "/usr/local/lib/python3.10/site-packages/telebot/apihelper.py", line 162, in _make_request
+    json_result = _check_result(method_name, result)
+  File "/usr/local/lib/python3.10/site-packages/telebot/apihelper.py", line 189, in _check_result
+    raise ApiTelegramException(method_name, result, result_json)
+telebot.apihelper.ApiTelegramException: A request to the Telegram API was unsuccessful. Error code: 400. Description: Bad Request: query is too old and response timeout expired or query ID is invalid
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.10/site-packages/telebot/__init__.py", line 1074, in __threaded_polling
+    self.worker_pool.raise_exceptions()
+  File "/usr/local/lib/python3.10/site-packages/telebot/util.py", line 147, in raise_exceptions
+    raise self.exception_info
+  File "/usr/local/lib/python3.10/site-packages/telebot/util.py", line 90, in run
+    task(*args, **kwargs)
+  File "/usr/local/lib/python3.10/site-packages/telebot/__init__.py", line 6801, in _run_middlewares_and_handler
+    result = handler['function'](message)
+  File "/app/bot/handlers.py", line 371, in handle_callback_query
+    self.bot.answer_callback_query(call.id, "Произошла ошибка!")
+  File "/usr/local/lib/python3.10/site-packages/telebot/__init__.py", line 4634, in answer_callback_query
+    return apihelper.answer_callback_query(self.token, callback_query_id, text, show_alert, url, cache_time)
+  File "/usr/local/lib/python3.10/site-packages/telebot/apihelper.py", line 1625, in answer_callback_query
+    return _make_request(token, method_url, params=payload, method='post')
+  File "/usr/local/lib/python3.10/site-packages/telebot/apihelper.py", line 162, in _make_request
+    json_result = _check_result(method_name, result)
+  File "/usr/local/lib/python3.10/site-packages/telebot/apihelper.py", line 189, in _check_result
+    raise ApiTelegramException(method_name, result, result_json)
+telebot.apihelper.ApiTelegramException: A request to the Telegram API was unsuccessful. Error code: 400. Description: Bad Request: query is too old and response timeout expired or query ID is invalid
+"
+2025-07-17 11:50:50,156 - TeleBot - ERROR - Exception traceback:
+Traceback (most recent call last):
+  File "/app/bot/handlers.py", line 367, in handle_callback_query
+    self.bot.answer_callback_query(call.id)
+  File "/usr/local/lib/python3.10/site-packages/telebot/__init__.py", line 4634, in answer_callback_query
+    return apihelper.answer_callback_query(self.token, callback_query_id, text, show_alert, url, cache_time)
+  File "/usr/local/lib/python3.10/site-packages/telebot/apihelper.py", line 1625, in answer_callback_query
+    return _make_request(token, method_url, params=payload, method='post')
+  File "/usr/local/lib/python3.10/site-packages/telebot/apihelper.py", line 162, in _make_request
+    json_result = _check_result(method_name, result)
+  File "/usr/local/lib/python3.10/site-packages/telebot/apihelper.py", line 189, in _check_result
+    raise ApiTelegramException(method_name, result, result_json)
+telebot.apihelper.ApiTelegramException: A request to the Telegram API was unsuccessful. Error code: 400. Description: Bad Request: query is too old and response timeout expired or query ID is invalid
+
+During handling of the above exception, another exception occurred:
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.10/site-packages/telebot/__init__.py", line 1074, in __threaded_polling
+    self.worker_pool.raise_exceptions()
+  File "/usr/local/lib/python3.10/site-packages/telebot/util.py", line 147, in raise_exceptions
+    raise self.exception_info
+  File "/usr/local/lib/python3.10/site-packages/telebot/util.py", line 90, in run
+    task(*args, **kwargs)
+  File "/usr/local/lib/python3.10/site-packages/telebot/__init__.py", line 6801, in _run_middlewares_and_handler
+    result = handler['function'](message)
+  File "/app/bot/handlers.py", line 371, in handle_callback_query
+    self.bot.answer_callback_query(call.id, "Произошла ошибка!")
+  File "/usr/local/lib/python3.10/site-packages/telebot/__init__.py", line 4634, in answer_callback_query
+    return apihelper.answer_callback_query(self.token, callback_query_id, text, show_alert, url, cache_time)
+  File "/usr/local/lib/python3.10/site-packages/telebot/apihelper.py", line 1625, in answer_callback_query
+    return _make_request(token, method_url, params=payload, method='post')
+  File "/usr/local/lib/python3.10/site-packages/telebot/apihelper.py", line 162, in _make_request
+    json_result = _check_result(method_name, result)
+  File "/usr/local/lib/python3.10/site-packages/telebot/apihelper.py", line 189, in _check_result
+    raise ApiTelegramException(method_name, result, result_json)
+telebot.apihelper.ApiTelegramException: A request to the Telegram API was unsuccessful. Error code: 400. Description: Bad Request: query is too old and response timeout expired or query ID is invalid
+
+2025-07-17 11:50:50,423 - bot.handlers - ERROR - Ошибка обработки callback: A request to the Telegram API was unsuccessful. Error code: 400. Description: Bad Request: query is too old and response timeout expired or query ID is invalid
+2025-07-17 11:50:50,523 (__init__.py:1083 Thread-1 (run_bot)) ERROR - TeleBot: "Threaded polling exception: A request to the Telegram API was unsuccessful. Error code: 400. Description: Bad Request: query is too old and response timeout expired or query ID is invalid"
+2025-07-17 11:50:50,523 - TeleBot - ERROR - Threaded polling exception: A request to the Telegram API was unsuccessful. Error code: 400. Description: Bad Request: query is too old and response timeout expired or query ID is invalid
+2025-07-17 11:50:50,523 (__init__.py:1085 Thread-1 (run_bot)) ERROR - TeleBot: "Exception traceback:
+Traceback (most recent call last):
+  File "/app/bot/handlers.py", line 367, in handle_callback_query
+    self.bot.answer_callback_query(call.id)
+  File "/usr/local/lib/python3.10/site-packages/telebot/__init__.py", line 4634, in answer_callback_query
+    return apihelper.answer_callback_query(self.token, callback_query_id, text, show_alert, url, cache_time)
+  File "/usr/local/lib/python3.10/site-packages/telebot/apihelper.py", line 1625, in answer_callback_query
+    return _make_request(token, method_url, params=payload, method='post')
+  File "/usr/local/lib/python3.10/site-packages/telebot/apihelper.py", line 162, in _make_request
+    json_result = _check_result(method_name, result)
+  File "/usr/local/lib/python3.10/site-packages/telebot/apihelper.py", line 189, in _check_result
+    raise ApiTelegramException(method_name, result, result_json)
+telebot.apihelper.ApiTelegramException: A request to the Telegram API was unsuccessful. Error code: 400. Description: Bad Request: query is too old and response timeout expired or query ID is invalid
+
+During handling of the above exception, another exception occurred:
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.10/site-packages/telebot/__init__.py", line 1074, in __threaded_polling
+    self.worker_pool.raise_exceptions()
+  File "/usr/local/lib/python3.10/site-packages/telebot/util.py", line 147, in raise_exceptions
+    raise self.exception_info
+  File "/usr/local/lib/python3.10/site-packages/telebot/util.py", line 90, in run
+    task(*args, **kwargs)
+  File "/usr/local/lib/python3.10/site-packages/telebot/__init__.py", line 6801, in _run_middlewares_and_handler
+    result = handler['function'](message)
+  File "/app/bot/handlers.py", line 371, in handle_callback_query
+    self.bot.answer_callback_query(call.id, "Произошла ошибка!")
+  File "/usr/local/lib/python3.10/site-packages/telebot/__init__.py", line 4634, in answer_callback_query
+    return apihelper.answer_callback_query(self.token, callback_query_id, text, show_alert, url, cache_time)
+  File "/usr/local/lib/python3.10/site-packages/telebot/apihelper.py", line 1625, in answer_callback_query
+    return _make_request(token, method_url, params=payload, method='post')
+  File "/usr/local/lib/python3.10/site-packages/telebot/apihelper.py", line 162, in _make_request
+    json_result = _check_result(method_name, result)
+  File "/usr/local/lib/python3.10/site-packages/telebot/apihelper.py", line 189, in _check_result
+    raise ApiTelegramException(method_name, result, result_json)
+telebot.apihelper.ApiTelegramException: A request to the Telegram API was unsuccessful. Error code: 400. Description: Bad Request: query is too old and response timeout expired or query ID is invalid
+"
+2025-07-17 11:50:50,523 - TeleBot - ERROR - Exception traceback:
+Traceback (most recent call last):
+  File "/app/bot/handlers.py", line 367, in handle_callback_query
+    self.bot.answer_callback_query(call.id)
+  File "/usr/local/lib/python3.10/site-packages/telebot/__init__.py", line 4634, in answer_callback_query
+    return apihelper.answer_callback_query(self.token, callback_query_id, text, show_alert, url, cache_time)
+  File "/usr/local/lib/python3.10/site-packages/telebot/apihelper.py", line 1625, in answer_callback_query
+    return _make_request(token, method_url, params=payload, method='post')
+  File "/usr/local/lib/python3.10/site-packages/telebot/apihelper.py", line 162, in _make_request
+    json_result = _check_result(method_name, result)
+  File "/usr/local/lib/python3.10/site-packages/telebot/apihelper.py", line 189, in _check_result
+    raise ApiTelegramException(method_name, result, result_json)
+telebot.apihelper.ApiTelegramException: A request to the Telegram API was unsuccessful. Error code: 400. Description: Bad Request: query is too old and response timeout expired or query ID is invalid
+
+During handling of the above exception, another exception occurred:
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.10/site-packages/telebot/__init__.py", line 1074, in __threaded_polling
+    self.worker_pool.raise_exceptions()
+  File "/usr/local/lib/python3.10/site-packages/telebot/util.py", line 147, in raise_exceptions
+    raise self.exception_info
+  File "/usr/local/lib/python3.10/site-packages/telebot/util.py", line 90, in run
+    task(*args, **kwargs)
+  File "/usr/local/lib/python3.10/site-packages/telebot/__init__.py", line 6801, in _run_middlewares_and_handler
+    result = handler['function'](message)
+  File "/app/bot/handlers.py", line 371, in handle_callback_query
+    self.bot.answer_callback_query(call.id, "Произошла ошибка!")
+  File "/usr/local/lib/python3.10/site-packages/telebot/__init__.py", line 4634, in answer_callback_query
+    return apihelper.answer_callback_query(self.token, callback_query_id, text, show_alert, url, cache_time)
+  File "/usr/local/lib/python3.10/site-packages/telebot/apihelper.py", line 1625, in answer_callback_query
+    return _make_request(token, method_url, params=payload, method='post')
+  File "/usr/local/lib/python3.10/site-packages/telebot/apihelper.py", line 162, in _make_request
+    json_result = _check_result(method_name, result)
+  File "/usr/local/lib/python3.10/site-packages/telebot/apihelper.py", line 189, in _check_result
+    raise ApiTelegramException(method_name, result, result_json)
+telebot.apihelper.ApiTelegramException: A request to the Telegram API was unsuccessful. Error code: 400. Description: Bad Request: query is too old and response timeout expired or query ID is invalid
+
+2025-07-17 11:50:50,537 - bot.handlers - ERROR - Ошибка обработки callback: A request to the Telegram API was unsuccessful. Error code: 400. Description: Bad Request: query is too old and response timeout expired or query ID is invalid
+2025-07-17 11:50:51,079 - bot.handlers - ERROR - Ошибка обработки callback: A request to the Telegram API was unsuccessful. Error code: 400. Description: Bad Request: query is too old and response timeout expired or query ID is invalid
+2025-07-17 11:50:51,184 (__init__.py:1083 Thread-1 (run_bot)) ERROR - TeleBot: "Threaded polling exception: A request to the Telegram API was unsuccessful. Error code: 400. Description: Bad Request: query is too old and response timeout expired or query ID is invalid"
+2025-07-17 11:50:51,184 - TeleBot - ERROR - Threaded polling exception: A request to the Telegram API was unsuccessful. Error code: 400. Description: Bad Request: query is too old and response timeout expired or query ID is invalid
+2025-07-17 11:50:51,184 (__init__.py:1085 Thread-1 (run_bot)) ERROR - TeleBot: "Exception traceback:
+Traceback (most recent call last):
+  File "/app/bot/handlers.py", line 367, in handle_callback_query
+    self.bot.answer_callback_query(call.id)
+  File "/usr/local/lib/python3.10/site-packages/telebot/__init__.py", line 4634, in answer_callback_query
+    return apihelper.answer_callback_query(self.token, callback_query_id, text, show_alert, url, cache_time)
+  File "/usr/local/lib/python3.10/site-packages/telebot/apihelper.py", line 1625, in answer_callback_query
+    return _make_request(token, method_url, params=payload, method='post')
+  File "/usr/local/lib/python3.10/site-packages/telebot/apihelper.py", line 162, in _make_request
+    json_result = _check_result(method_name, result)
+  File "/usr/local/lib/python3.10/site-packages/telebot/apihelper.py", line 189, in _check_result
+    raise ApiTelegramException(method_name, result, result_json)
+telebot.apihelper.ApiTelegramException: A request to the Telegram API was unsuccessful. Error code: 400. Description: Bad Request: query is too old and response timeout expired or query ID is invalid
+
+During handling of the above exception, another exception occurred:
+
+
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.10/site-packages/telebot/__init__.py", line 1074, in __threaded_polling
+    self.worker_pool.raise_exceptions()
+  File "/usr/local/lib/python3.10/site-packages/telebot/util.py", line 147, in raise_exceptions
+    raise self.exception_info
+  File "/usr/local/lib/python3.10/site-packages/telebot/util.py", line 90, in run
+    task(*args, **kwargs)
+  File "/usr/local/lib/python3.10/site-packages/telebot/__init__.py", line 6801, in _run_middlewares_and_handler
+    result = handler['function'](message)
+  File "/app/bot/handlers.py", line 371, in handle_callback_query
+    self.bot.answer_callback_query(call.id, "Произошла ошибка!")
+  File "/usr/local/lib/python3.10/site-packages/telebot/__init__.py", line 4634, in answer_callback_query
+    return apihelper.answer_callback_query(self.token, callback_query_id, text, show_alert, url, cache_time)
+  File "/usr/local/lib/python3.10/site-packages/telebot/apihelper.py", line 1625, in answer_callback_query
+    return _make_request(token, method_url, params=payload, method='post')
+  File "/usr/local/lib/python3.10/site-packages/telebot/apihelper.py", line 162, in _make_request
+    json_result = _check_result(method_name, result)
+  File "/usr/local/lib/python3.10/site-packages/telebot/apihelper.py", line 189, in _check_result
+    raise ApiTelegramException(method_name, result, result_json)
+telebot.apihelper.ApiTelegramException: A request to the Telegram API was unsuccessful. Error code: 400. Description: Bad Request: query is too old and response timeout expired or query ID is invalid
+"
+2025-07-17 11:50:51,184 - TeleBot - ERROR - Exception traceback:
+Traceback (most recent call last):
+  File "/app/bot/handlers.py", line 367, in handle_callback_query
+    self.bot.answer_callback_query(call.id)
+  File "/usr/local/lib/python3.10/site-packages/telebot/__init__.py", line 4634, in answer_callback_query
+    return apihelper.answer_callback_query(self.token, callback_query_id, text, show_alert, url, cache_time)
+  File "/usr/local/lib/python3.10/site-packages/telebot/apihelper.py", line 1625, in answer_callback_query
+    return _make_request(token, method_url, params=payload, method='post')
+  File "/usr/local/lib/python3.10/site-packages/telebot/apihelper.py", line 162, in _make_request
+    json_result = _check_result(method_name, result)
+  File "/usr/local/lib/python3.10/site-packages/telebot/apihelper.py", line 189, in _check_result
+    raise ApiTelegramException(method_name, result, result_json)
+telebot.apihelper.ApiTelegramException: A request to the Telegram API was unsuccessful. Error code: 400. Description: Bad Request: query is too old and response timeout expired or query ID is invalid
+
+During handling of the above exception, another exception occurred:
+
+
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.10/site-packages/telebot/__init__.py", line 1074, in __threaded_polling
+    self.worker_pool.raise_exceptions()
+  File "/usr/local/lib/python3.10/site-packages/telebot/util.py", line 147, in raise_exceptions
+    raise self.exception_info
+  File "/usr/local/lib/python3.10/site-packages/telebot/util.py", line 90, in run
+    task(*args, **kwargs)
+  File "/usr/local/lib/python3.10/site-packages/telebot/__init__.py", line 6801, in _run_middlewares_and_handler
+    result = handler['function'](message)
+  File "/app/bot/handlers.py", line 371, in handle_callback_query
+    self.bot.answer_callback_query(call.id, "Произошла ошибка!")
+  File "/usr/local/lib/python3.10/site-packages/telebot/__init__.py", line 4634, in answer_callback_query
+    return apihelper.answer_callback_query(self.token, callback_query_id, text, show_alert, url, cache_time)
+  File "/usr/local/lib/python3.10/site-packages/telebot/apihelper.py", line 1625, in answer_callback_query
+    return _make_request(token, method_url, params=payload, method='post')
+  File "/usr/local/lib/python3.10/site-packages/telebot/apihelper.py", line 162, in _make_request
+    json_result = _check_result(method_name, result)
+  File "/usr/local/lib/python3.10/site-packages/telebot/apihelper.py", line 189, in _check_result
+    raise ApiTelegramException(method_name, result, result_json)
+telebot.apihelper.ApiTelegramException: A request to the Telegram API was unsuccessful. Error code: 400. Description: Bad Request: query is too old and response timeout expired or query ID is invalid
+
+2025-07-17 11:50:51,236 - bot.handlers - ERROR - Ошибка обработки callback: A request to the Telegram API was unsuccessful. Error code: 400. Description: Bad Request: query is too old and response timeout expired or query ID is invalid
+2025-07-17 11:50:51,849 - bot.handlers - ERROR - Ошибка обработки callback: A request to the Telegram API was unsuccessful. Error code: 400. Description: Bad Request: query is too old and response timeout expired or query ID is invalid
+2025-07-17 11:50:52,501 - bot.handlers - ERROR - Ошибка обработки callback: A request to the Telegram API was unsuccessful. Error code: 400. Description: Bad Request: query is too old and response timeout expired or query ID is invalid
+2025-07-17 11:50:52,694 (__init__.py:1083 Thread-1 (run_bot)) ERROR - TeleBot: "Threaded polling exception: A request to the Telegram API was unsuccessful. Error code: 400. Description: Bad Request: query is too old and response timeout expired or query ID is invalid"
+2025-07-17 11:50:52,694 - TeleBot - ERROR - Threaded polling exception: A request to the Telegram API was unsuccessful. Error code: 400. Description: Bad Request: query is too old and response timeout expired or query ID is invalid
+2025-07-17 11:50:52,694 (__init__.py:1085 Thread-1 (run_bot)) ERROR - TeleBot: "Exception traceback:
+Traceback (most recent call last):
+  File "/app/bot/handlers.py", line 367, in handle_callback_query
+    self.bot.answer_callback_query(call.id)
+  File "/usr/local/lib/python3.10/site-packages/telebot/__init__.py", line 4634, in answer_callback_query
+    return apihelper.answer_callback_query(self.token, callback_query_id, text, show_alert, url, cache_time)
+  File "/usr/local/lib/python3.10/site-packages/telebot/apihelper.py", line 1625, in answer_callback_query
+    return _make_request(token, method_url, params=payload, method='post')
+  File "/usr/local/lib/python3.10/site-packages/telebot/apihelper.py", line 162, in _make_request
+    json_result = _check_result(method_name, result)
+  File "/usr/local/lib/python3.10/site-packages/telebot/apihelper.py", line 189, in _check_result
+    raise ApiTelegramException(method_name, result, result_json)
+telebot.apihelper.ApiTelegramException: A request to the Telegram API was unsuccessful. Error code: 400. Description: Bad Request: query is too old and response timeout expired or query ID is invalid
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.10/site-packages/telebot/__init__.py", line 1074, in __threaded_polling
+    self.worker_pool.raise_exceptions()
+  File "/usr/local/lib/python3.10/site-packages/telebot/util.py", line 147, in raise_exceptions
+    raise self.exception_info
+  File "/usr/local/lib/python3.10/site-packages/telebot/util.py", line 90, in run
+    task(*args, **kwargs)
+  File "/usr/local/lib/python3.10/site-packages/telebot/__init__.py", line 6801, in _run_middlewares_and_handler
+    result = handler['function'](message)
+  File "/app/bot/handlers.py", line 371, in handle_callback_query
+    self.bot.answer_callback_query(call.id, "Произошла ошибка!")
+  File "/usr/local/lib/python3.10/site-packages/telebot/__init__.py", line 4634, in answer_callback_query
+    return apihelper.answer_callback_query(self.token, callback_query_id, text, show_alert, url, cache_time)
+  File "/usr/local/lib/python3.10/site-packages/telebot/apihelper.py", line 1625, in answer_callback_query
+    return _make_request(token, method_url, params=payload, method='post')
+  File "/usr/local/lib/python3.10/site-packages/telebot/apihelper.py", line 162, in _make_request
+    json_result = _check_result(method_name, result)
+  File "/usr/local/lib/python3.10/site-packages/telebot/apihelper.py", line 189, in _check_result
+    raise ApiTelegramException(method_name, result, result_json)
+telebot.apihelper.ApiTelegramException: A request to the Telegram API was unsuccessful. Error code: 400. Description: Bad Request: query is too old and response timeout expired or query ID is invalid
+"
+2025-07-17 11:50:52,694 - TeleBot - ERROR - Exception traceback:
+Traceback (most recent call last):
+  File "/app/bot/handlers.py", line 367, in handle_callback_query
+    self.bot.answer_callback_query(call.id)
+  File "/usr/local/lib/python3.10/site-packages/telebot/__init__.py", line 4634, in answer_callback_query
+    return apihelper.answer_callback_query(self.token, callback_query_id, text, show_alert, url, cache_time)
+  File "/usr/local/lib/python3.10/site-packages/telebot/apihelper.py", line 1625, in answer_callback_query
+    return _make_request(token, method_url, params=payload, method='post')
+  File "/usr/local/lib/python3.10/site-packages/telebot/apihelper.py", line 162, in _make_request
+    json_result = _check_result(method_name, result)
+  File "/usr/local/lib/python3.10/site-packages/telebot/apihelper.py", line 189, in _check_result
+    raise ApiTelegramException(method_name, result, result_json)
+telebot.apihelper.ApiTelegramException: A request to the Telegram API was unsuccessful. Error code: 400. Description: Bad Request: query is too old and response timeout expired or query ID is invalid
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.10/site-packages/telebot/__init__.py", line 1074, in __threaded_polling
+    self.worker_pool.raise_exceptions()
+  File "/usr/local/lib/python3.10/site-packages/telebot/util.py", line 147, in raise_exceptions
+    raise self.exception_info
+  File "/usr/local/lib/python3.10/site-packages/telebot/util.py", line 90, in run
+    task(*args, **kwargs)
+  File "/usr/local/lib/python3.10/site-packages/telebot/__init__.py", line 6801, in _run_middlewares_and_handler
+    result = handler['function'](message)
+  File "/app/bot/handlers.py", line 371, in handle_callback_query
+    self.bot.answer_callback_query(call.id, "Произошла ошибка!")
+  File "/usr/local/lib/python3.10/site-packages/telebot/__init__.py", line 4634, in answer_callback_query
+    return apihelper.answer_callback_query(self.token, callback_query_id, text, show_alert, url, cache_time)
+  File "/usr/local/lib/python3.10/site-packages/telebot/apihelper.py", line 1625, in answer_callback_query
+    return _make_request(token, method_url, params=payload, method='post')
+  File "/usr/local/lib/python3.10/site-packages/telebot/apihelper.py", line 162, in _make_request
+    json_result = _check_result(method_name, result)
+  File "/usr/local/lib/python3.10/site-packages/telebot/apihelper.py", line 189, in _check_result
+    raise ApiTelegramException(method_name, result, result_json)
+telebot.apihelper.ApiTelegramException: A request to the Telegram API was unsuccessful. Error code: 400. Description: Bad Request: query is too old and response timeout expired or query ID is invalid
+
+2025-07-17 11:50:52,916 - bot.handlers - ERROR - Ошибка обработки callback: A request to the Telegram API was unsuccessful. Error code: 400. Description: Bad Request: query is too old and response timeout expired or query ID is invalid
+2025-07-17 11:50:53,403 - bot.handlers - ERROR - Ошибка обработки callback: A request to the Telegram API was unsuccessful. Error code: 400. Description: Bad Request: query is too old and response timeout expired or query ID is invalid
+2025-07-17 11:50:53,522 - bot.handlers - ERROR - Ошибка обработки callback: A request to the Telegram API was unsuccessful. Error code: 400. Description: Bad Request: query is too old and response timeout expired or query ID is invalid
+`
+
