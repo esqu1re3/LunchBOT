@@ -7,6 +7,12 @@ import os
 import sys
 from datetime import datetime
 from typing import List, Dict, Any
+from dotenv import load_dotenv
+from streamlit_cookies_manager import EncryptedCookieManager
+import pytz
+
+# Загрузка переменных окружения
+load_dotenv()
 
 # Добавляем родительскую директорию в путь для импорта
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -28,13 +34,18 @@ def get_db():
     return DatabaseManager()
 
 def format_datetime(dt_string: str) -> str:
-    """Форматировать дату и время для отображения"""
+    """Форматировать дату и время для отображения в UTC+6 (Asia/Bishkek)"""
     try:
         if not dt_string:
             return "Не указано"
         dt = datetime.fromisoformat(dt_string.replace('Z', '+00:00'))
+        # Приводим к UTC+6
+        tz = pytz.timezone('Asia/Bishkek')
+        if dt.tzinfo is None:
+            dt = pytz.utc.localize(dt)
+        dt = dt.astimezone(tz)
         return dt.strftime("%d.%m.%Y %H:%M")
-    except:
+    except Exception:
         return dt_string
 
 def format_status(status: str) -> str:
@@ -48,8 +59,42 @@ def format_status(status: str) -> str:
     }
     return status_map.get(status, status)
 
+# === ПРОСТАЯ АВТОРИЗАЦИЯ ПО ПАРОЛЮ С COOKIE ===
+cookies_secret = os.getenv('COOKIES_SECRET', 'default_secret')
+cookie_manager = EncryptedCookieManager(prefix="lunchbot_admin_", password=cookies_secret)
+cookie_manager.ready()
+
+def check_password():
+    """Проверка пароля для входа в админ-панель (cookie-based)"""
+    if not cookie_manager.ready():
+        st.warning("Cookie manager не готов. Перезагрузите страницу.")
+        st.stop()
+    # Проверяем cookie
+    if cookie_manager.get("admin_authenticated") == "1":
+        st.session_state['admin_authenticated'] = True
+        return True
+    if 'admin_authenticated' not in st.session_state:
+        st.session_state['admin_authenticated'] = False
+    if st.session_state['admin_authenticated']:
+        cookie_manager["admin_authenticated"] = "1"
+        return True
+    correct_password = os.getenv('ADMIN_PANEL_PASSWORD')
+    st.title('🔒 Вход в админ-панель')
+    password = st.text_input('Введите пароль', type='password')
+    if st.button('Войти'):
+        if password == correct_password and password:
+            st.session_state['admin_authenticated'] = True
+            cookie_manager["admin_authenticated"] = "1"
+            st.success('Доступ разрешён!')
+            st.experimental_rerun()
+        else:
+            st.error('Неверный пароль!')
+    return False
+
 def main():
     """Главная функция админ-панели"""
+    if not check_password():
+        st.stop()
     st.title("🍽️ LunchBOT - Админ-панель")
     st.markdown("---")
     

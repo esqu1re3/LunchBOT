@@ -38,6 +38,7 @@ class BotHandlers:
         self.bot.message_handler(commands=['help'])(self.handle_help)
         self.bot.message_handler(commands=['new_debt'])(self.handle_new_debt_command)
         self.bot.message_handler(commands=['my_debts'])(self.handle_my_debts_command)
+        self.bot.message_handler(commands=['who_owes_me'])(self.handle_who_owes_me_command)
 
         
         # Callback-запросы
@@ -226,8 +227,38 @@ class BotHandlers:
         
         self.show_my_debts(user_id)
     
+    def handle_who_owes_me_command(self, message: Message):
+        user_id = message.from_user.id
+        if not self.check_user_activation(user_id):
+            self.bot.send_message(user_id, ERROR_NOT_ACTIVATED)
+            return
+        self.show_who_owes_me(user_id)
 
-    
+    def show_who_owes_me(self, user_id: int):
+        # Получаем все открытые долги, где user_id — кредитор
+        debts = [d for d in self.db.get_open_debts() if d['creditor_id'] == user_id]
+        if not debts:
+            self.bot.send_message(
+                user_id,
+                "✅ Вам никто не должен!",
+                reply_markup=get_back_to_main_keyboard()
+            )
+            return
+        # Группируем по должникам
+        debtors = {}
+        for debt in debts:
+            name = debt['debtor_name'] or debt['debtor_username'] or f"User {debt['debtor_id']}"
+            debtors.setdefault(name, 0)
+            debtors[name] += debt['amount']
+        debtors_list = '\n'.join([f"• {name}: {amount:.2f} сом" for name, amount in debtors.items()])
+        total_amount = sum(debtors.values())
+        self.bot.send_message(
+            user_id,
+            WHO_OWES_ME_MESSAGE.format(debtors_list=debtors_list, total_amount=total_amount),
+            reply_markup=get_back_to_main_keyboard()
+        )
+
+
     # === Обработчики callback-запросов ===
     
     def handle_callback_query(self, call: CallbackQuery):
@@ -252,6 +283,9 @@ class BotHandlers:
                 
             elif data == "my_debts":
                 self.show_my_debts(user_id)
+                
+            elif data == "who_owes_me":
+                self.show_who_owes_me(user_id)
                 
             elif data == "help":
                 self.bot.edit_message_text(
@@ -460,15 +494,27 @@ class BotHandlers:
                             file_type=file_type,
                             total_amount=total_amount
                         )
-                    
                     # Удаляем сообщения с запросом чека
                     self.clear_messages_from_state(user_id)
-                    
-                    self.bot.send_message(
-                        user_id,
-                        f"✅ Чек на сумму {total_amount:.2f} сом отправлен всем кредиторам! Ожидайте подтверждения."
-                    )
-                    
+                    # Формируем корректное сообщение для должника
+                    creditor_names = []
+                    for creditor_id in creditor_groups:
+                        creditor = self.db.get_user(creditor_id)
+                        if creditor:
+                            name = get_user_display_name(creditor)
+                        else:
+                            name = f"User {creditor_id}"
+                        creditor_names.append(name)
+                    if len(creditor_names) == 1:
+                        self.bot.send_message(
+                            user_id,
+                            f"✅ Чек на сумму {total_amount:.2f} сом отправлен кредитору: {creditor_names[0]}! Ожидайте подтверждения."
+                        )
+                    else:
+                        self.bot.send_message(
+                            user_id,
+                            f"✅ Чек на сумму {total_amount:.2f} сом отправлен кредиторам: {', '.join(creditor_names)}! Ожидайте подтверждения."
+                        )
                     self.clear_user_state(user_id)
                 else:
                     self.bot.send_message(user_id, ERROR_GENERAL)
@@ -495,6 +541,9 @@ class BotHandlers:
             return
         elif message.text == "📋 Мои долги":
             self.show_my_debts(user_id)
+            return
+        elif message.text == "💸 Кто мне должен":
+            self.show_who_owes_me(user_id)
             return
         elif message.text == "❓ Помощь":
             self.bot.send_message(user_id, HELP_MESSAGE, reply_markup=get_back_to_main_keyboard())

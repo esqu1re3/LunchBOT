@@ -33,6 +33,7 @@ pip install -r requirements.txt
 - Откройте `.env` и укажите:
   - `BOT_TOKEN` — токен Telegram-бота (получить у [@BotFather](https://t.me/BotFather))
   - `ADMIN_CHAT_ID` — ваш Telegram ID (узнать у [@userinfobot](https://t.me/userinfobot))
+  - `ADMIN_PANEL_PASSWORD` — пароль для входа в админ-панель (Streamlit)
 
 ### 5. Запустите систему одной командой
 ```bash
@@ -116,6 +117,7 @@ LunchBOT/
 - `/start` — подключение и главное меню
 - `/new_debt` — создать новый долг
 - `/my_debts` — посмотреть свои долги
+- `/who_owes_me` — кто должен вам (или кнопка "Кто мне должен")
 - `/help` — справка
 
 ---

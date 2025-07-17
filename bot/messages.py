@@ -32,6 +32,16 @@ MAIN_MENU = """
 Выберите действие:
 """
 
+WHO_OWES_ME_MESSAGE = """
+💸 Кто мне должен
+
+Вот список пользователей, которые должны вам:
+
+{debtors_list}
+
+💰 Общая сумма: {total_amount} сом
+"""
+
 HELP_MESSAGE = """
 🤖 Помощь по использованию бота
 
@@ -200,6 +210,7 @@ def get_main_menu_keyboard() -> InlineKeyboardMarkup:
         InlineKeyboardButton("📋 Мои долги", callback_data="my_debts")
     )
     keyboard.add(
+        InlineKeyboardButton("💸 Кто мне должен", callback_data="who_owes_me"),
         InlineKeyboardButton("❓ Помощь", callback_data="help")
     )
     return keyboard
@@ -360,6 +371,7 @@ def get_main_menu_reply_keyboard() -> ReplyKeyboardMarkup:
         KeyboardButton("📋 Мои долги")
     )
     keyboard.add(
+        KeyboardButton("💸 Кто мне должен"),
         KeyboardButton("❓ Помощь")
     )
     return keyboard
@@ -394,19 +406,22 @@ def format_debt_list(debts: List[Dict[str, Any]]) -> str:
 
 def format_datetime(dt_string: str) -> str:
     """
-    Форматировать дату и время для отображения
-    
+    Форматировать дату и время для отображения в UTC+6 (Asia/Bishkek)
     Args:
         dt_string: Строка с датой и временем
-        
     Returns:
         Форматированная строка с датой
     """
     try:
         from datetime import datetime
+        import pytz
         dt = datetime.fromisoformat(dt_string.replace('Z', '+00:00'))
+        tz = pytz.timezone('Asia/Bishkek')
+        if dt.tzinfo is None:
+            dt = pytz.utc.localize(dt)
+        dt = dt.astimezone(tz)
         return dt.strftime("%d.%m.%Y %H:%M")
-    except:
+    except Exception:
         return dt_string
 
 def get_user_display_name(user: Dict[str, Any]) -> str:
