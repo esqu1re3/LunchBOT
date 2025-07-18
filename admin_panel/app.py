@@ -1,10 +1,11 @@
 """
-Админ-панель на Streamlit для управления системой долгов
+Асинхронная админ-панель на Streamlit для управления системой долгов
 """
 import streamlit as st
 import pandas as pd
 import os
 import sys
+import asyncio
 from datetime import datetime
 from typing import List, Dict, Any
 from dotenv import load_dotenv
@@ -18,21 +19,28 @@ load_dotenv()
 # Добавляем родительскую директорию в путь для импорта
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from bot.db import DatabaseManager
+from bot.async_db import AsyncDatabaseManager
 
 # Настройка страницы
 st.set_page_config(
-    page_title="LunchBOT - Админ-панель",
+    page_title="LunchBOT - Асинхронная админ-панель",
     page_icon="🍽️",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# Инициализация базы данных
+# Инициализация асинхронной базы данных
 @st.cache_resource
-def get_db():
-    """Получить экземпляр базы данных"""
-    return DatabaseManager()
+def get_async_db():
+    """Получить экземпляр асинхронной базы данных"""
+    return AsyncDatabaseManager()
+
+async def get_db_data():
+    """Получить данные из асинхронной БД"""
+    db = get_async_db()
+    users = await db.get_all_users()
+    debts = await db.get_open_debts()
+    return users, debts
 
 def format_datetime(dt_string: str) -> str:
     """Форматировать дату и время для отображения в UTC+6 (Asia/Bishkek)"""
@@ -80,7 +88,7 @@ def check_password():
         cookie_manager["admin_authenticated"] = "1"
         return True
     correct_password = os.getenv('ADMIN_PANEL_PASSWORD')
-    st.title('🔒 Вход в админ-панель')
+    st.title('🔒 Вход в асинхронную админ-панель')
     password = st.text_input('Введите пароль', type='password')
     if st.button('Войти'):
         if password == correct_password and password:
@@ -92,15 +100,15 @@ def check_password():
             st.error('Неверный пароль!')
     return False
 
-def main():
-    """Главная функция админ-панели"""
+async def main():
+    """Главная функция асинхронной админ-панели"""
     if not check_password():
         st.stop()
-    st.title("🍽️ LunchBOT - Админ-панель")
+    st.title("🍽️ LunchBOT - Асинхронная админ-панель")
     st.markdown("---")
     
-    # Получаем базу данных
-    db = get_db()
+    # Получаем данные из асинхронной БД
+    users, debts = await get_db_data()
     
     # Сайдбар с навигацией
     st.sidebar.title("📋 Навигация")
@@ -128,21 +136,17 @@ def main():
     st.experimental_set_query_params(page=selected_page)
     # Отображаем выбранную страницу
     if selected_page == "Обзор":
-        show_overview(db)
+        await show_overview(users, debts)
     elif selected_page == "Долги":
-        show_debts(db)
+        await show_debts(users, debts)
     elif selected_page == "Пользователи":
-        show_users(db)
+        await show_users(users, debts)
     elif selected_page == "Настройки":
-        show_settings(db)
+        await show_settings()
 
-def show_overview(db: DatabaseManager):
+async def show_overview(users: List[Dict], debts: List[Dict]):
     """Показать обзор системы"""
     st.header("📊 Обзор системы")
-    
-    # Получаем статистику
-    users = db.get_all_users()
-    debts = db.get_open_debts()
     
     # Метрики
     col1, col2, col3, col4 = st.columns(4)
@@ -192,7 +196,7 @@ def show_overview(db: DatabaseManager):
     else:
         st.info("Нет активных долгов")
 
-def show_debts(db: DatabaseManager):
+async def show_debts(users: List[Dict], debts: List[Dict]):
     """Показать управление долгами"""
     st.header("💰 Управление долгами")
     
@@ -201,8 +205,6 @@ def show_debts(db: DatabaseManager):
     
     with tab1:
         st.subheader("📋 Активные долги")
-        
-        debts = db.get_open_debts()
         
         if debts:
             # Фильтры
@@ -235,13 +237,13 @@ def show_debts(db: DatabaseManager):
             
             # Отображаем долги
             for debt in filtered_debts:
-                with st.expander(f"💰 {debt['debtor_name']} → {debt['creditor_name']}: {debt['amount']} сом."):
+                with st.expander(f"💰 {debt['debtor_name']} → {debt['creditor_name']}: {debt['amount']:.2f} сом."):
                     col1, col2 = st.columns(2)
                     
                     with col1:
                         st.write(f"**Должник:** {debt['debtor_name']}")
                         st.write(f"**Кредитор:** {debt['creditor_name']}")
-                        st.write(f"**Сумма:** {debt['amount']} сом.")
+                        st.write(f"**Сумма:** {debt['amount']:.2f} сом.")
                         st.write(f"**Описание:** {debt['description'] or 'Не указано'}")
                     
                     with col2:
@@ -254,20 +256,17 @@ def show_debts(db: DatabaseManager):
                     
                     with col_btn1:
                         if st.button(f"Закрыть долг", key=f"close_{debt['id']}"):
-                            if db.close_debt(debt['id']):
+                            db = get_async_db()
+                            if await db.close_debt(debt['id']):
                                 st.success("Долг закрыт!")
                                 st.rerun()
                             else:
                                 st.error("Ошибка при закрытии долга")
-                    
-                    # Кнопка оспаривания удалена, отмена подтверждения теперь только через Telegram-бота
         else:
             st.info("Нет активных долгов")
     
     with tab2:
         st.subheader("➕ Создать новый долг")
-        
-        users = db.get_all_users()
         
         if len(users) >= 2:
             with st.form("create_debt_form"):
@@ -303,9 +302,9 @@ def show_debts(db: DatabaseManager):
                     if debtor_id == creditor_id:
                         st.error("Должник и кредитор не могут быть одним лицом!")
                     else:
-                        debt_id = db.create_debt(debtor_id, creditor_id, amount, description)
+                        db = get_async_db()
+                        debt_id = await db.create_debt(debtor_id, creditor_id, amount, description)
                         if debt_id:
-                            logger.info(f"[ADMIN] Добавлен долг: debtor_id={debtor_id}, creditor_id={creditor_id}, amount={amount}, description={description}, debt_id={debt_id}")
                             st.success(f"Долг создан! ID: {debt_id}")
                             st.rerun()
                         else:
@@ -313,11 +312,9 @@ def show_debts(db: DatabaseManager):
         else:
             st.warning("Для создания долга нужно минимум 2 пользователя")
 
-def show_users(db: DatabaseManager):
+async def show_users(users: List[Dict], debts: List[Dict]):
     """Показать управление пользователями"""
     st.header("👥 Управление пользователями")
-    
-    users = db.get_all_users()
     
     if users:
         # Статистика пользователей
@@ -327,7 +324,6 @@ def show_users(db: DatabaseManager):
             st.subheader("📊 Статистика по должникам")
             
             # Группируем долги по должникам
-            debts = db.get_open_debts()
             debtor_stats = {}
             
             for debt in debts:
@@ -381,14 +377,16 @@ def show_users(db: DatabaseManager):
                     # Toggle для активации/деактивации
                     active = st.toggle("Активен (можно назначать долги)", value=bool(user['is_active']), key=f"toggle_active_{user['user_id']}")
                     if active != bool(user['is_active']):
-                        if db.set_user_active(user['user_id'], int(active)):
+                        db = get_async_db()
+                        if await db.set_user_active(user['user_id'], int(active)):
                             st.success("Статус пользователя обновлён!")
                             st.rerun()
                         else:
                             st.error("Ошибка при обновлении статуса пользователя")
                     # Кнопка для каскадного удаления
                     if st.button(f"Удалить пользователя и все данные", key=f"delete_user_{user['user_id']}"):
-                        if db.delete_user_cascade(user['user_id']):
+                        db = get_async_db()
+                        if await db.delete_user_cascade(user['user_id']):
                             st.success("Пользователь и все связанные данные удалены!")
                             st.rerun()
                         else:
@@ -411,7 +409,8 @@ def show_users(db: DatabaseManager):
                         
                         if st.form_submit_button("Сохранить"):
                             if new_first_name.strip():
-                                if db.update_user_name(user['user_id'], new_first_name.strip(), new_last_name.strip() or None):
+                                db = get_async_db()
+                                if await db.update_user_name(user['user_id'], new_first_name.strip(), new_last_name.strip() or None):
                                     st.success("Имя обновлено!")
                                     st.rerun()
                                 else:
@@ -421,17 +420,17 @@ def show_users(db: DatabaseManager):
     else:
         st.info("Нет зарегистрированных пользователей")
 
-
-
-def show_settings(db: DatabaseManager):
+async def show_settings():
     """Показать настройки системы"""
     st.header("⚙️ Настройки системы")
+    
+    db = get_async_db()
     
     # Настройки напоминаний
     st.subheader("⏰ Настройки напоминаний")
     
-    current_frequency = int(db.get_setting('reminder_frequency') or 1)
-    current_time = db.get_setting('reminder_time') or '17:30'
+    current_frequency = int(await db.get_setting('reminder_frequency') or 1)
+    current_time = await db.get_setting('reminder_time') or '17:30'
     
     with st.form("reminder_settings"):
         col1, col2 = st.columns(2)
@@ -479,9 +478,9 @@ def show_settings(db: DatabaseManager):
             new_time = reminder_time.strftime('%H:%M')
             
             success = True
-            if not db.set_setting('reminder_frequency', str(new_frequency)):
+            if not await db.set_setting('reminder_frequency', str(new_frequency)):
                 success = False
-            if not db.set_setting('reminder_time', new_time):
+            if not await db.set_setting('reminder_time', new_time):
                 success = False
             
             if success:
@@ -493,7 +492,7 @@ def show_settings(db: DatabaseManager):
     # Настройки бота
     st.subheader("🤖 Информация о боте")
     
-    admin_chat_id = db.get_setting('admin_chat_id') or "Не установлен"
+    admin_chat_id = await db.get_setting('admin_chat_id') or "Не установлен"
     
     col1, col2 = st.columns(2)
     
@@ -520,23 +519,19 @@ def show_settings(db: DatabaseManager):
     st.subheader("📊 Информация о системе")
     
     # Статистика базы данных
-    users_count = len(db.get_all_users())
-    debts_count = len(db.get_open_debts())
-    links_count = len(db.get_activation_links())
+    users, debts = await get_db_data()
     
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        st.metric("Пользователи", users_count)
+        st.metric("Пользователи", len(users))
     
     with col2:
-        st.metric("Активные долги", debts_count)
+        st.metric("Активные долги", len(debts))
     
     with col3:
-        st.metric("Ссылки активации", links_count)
+        st.metric("Асинхронная БД", "✅ Активна")
 
+# Запуск асинхронной админ-панели
 if __name__ == "__main__":
-    # Настройка логирования для админки
-    logging.basicConfig(level=logging.INFO)
-    logger = logging.getLogger("admin_panel")
-    main() 
+    asyncio.run(main()) 

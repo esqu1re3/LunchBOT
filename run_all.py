@@ -1,17 +1,16 @@
 #!/usr/bin/env python3
 """
-Скрипт для запуска бота и админ-панели одновременно
+Главный модуль для запуска всей системы LunchBOT
 """
 import os
 import sys
-import subprocess
-import threading
 import time
 import logging
+import subprocess
 from pathlib import Path
 from dotenv import load_dotenv
 
-# Загружаем переменные из .env файла
+# Загружаем переменные окружения
 load_dotenv()
 
 # Настройка логирования
@@ -24,190 +23,201 @@ logger = logging.getLogger(__name__)
 def check_python_version():
     """Проверка версии Python"""
     if sys.version_info < (3, 8):
-        logger.error("Требуется Python 3.8 или выше")
+        print("❌ Требуется Python 3.8 или выше")
         sys.exit(1)
+    print(f"✅ Python {sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}")
 
 def check_dependencies():
-    """Проверка установленных зависимостей"""
-    packages_to_check = {
-        'telebot': 'pyTelegramBotAPI',
+    """Проверка зависимостей"""
+    required_packages = {
+        'aiogram': 'aiogram',
+        'aiosqlite': 'aiosqlite', 
         'streamlit': 'streamlit',
-        'apscheduler': 'apscheduler',
         'pandas': 'pandas',
-        'numpy': 'numpy'
+        'dotenv': 'python-dotenv',
+        'apscheduler': 'apscheduler',
+        'pytz': 'pytz'
     }
     
     missing_packages = []
-    problematic_packages = []
     
-    for import_name, package_name in packages_to_check.items():
+    for import_name, package_name in required_packages.items():
         try:
             __import__(import_name)
         except ImportError:
             missing_packages.append(package_name)
-        except Exception as e:
-            problematic_packages.append((package_name, str(e)))
     
     if missing_packages:
-        logger.error(f"Отсутствуют пакеты: {', '.join(missing_packages)}")
-        logger.info("Установите их командой: pip install -r requirements.txt")
+        print(f"❌ Отсутствуют зависимости: {', '.join(missing_packages)}")
+        print("Установите их командой: pip install -r requirements.txt")
         sys.exit(1)
     
-    if problematic_packages:
-        logger.error("Проблемы с совместимостью пакетов:")
-        for package, error in problematic_packages:
-            logger.error(f"  {package}: {error}")
-        logger.info("Рекомендуется переустановить пакеты:")
-        logger.info("  pip uninstall numpy pandas -y")
-        logger.info("  pip install -r requirements.txt")
-        sys.exit(1)
+    print("✅ Все зависимости установлены")
 
-def init_database():
-    """Инициализация базы данных (создание таблиц и новых полей)"""
+async def init_database():
+    """Инициализация асинхронной базы данных"""
     try:
-        from bot.db import DatabaseManager
-        logger.info("Инициализация базы данных...")
-        db = DatabaseManager()
-        db.migrate_database()  # Автоматическая миграция структуры
-        logger.info("База данных инициализирована успешно")
+        logger.info("Инициализация асинхронной базы данных...")
+        from bot.async_db import AsyncDatabaseManager
+        
+        db = AsyncDatabaseManager()
+        await db.init_database()
+        logger.info("Асинхронная база данных инициализирована успешно")
         return db
     except Exception as e:
-        logger.error(f"Ошибка инициализации базы данных: {e}")
-        sys.exit(1)
+        logger.error(f"Ошибка инициализации БД: {e}")
+        raise
 
 def get_bot_token():
     """Получение токена бота"""
-    # Проверяем переменную окружения из .env
-    token = os.getenv('BOT_TOKEN')
-    
+    token = os.getenv("BOT_TOKEN")
     if not token:
-        logger.error("Токен бота не найден!")
-        logger.info("Создайте файл .env на основе .env.example и укажите BOT_TOKEN")
-        logger.info("Или установите переменную окружения: export BOT_TOKEN='your_bot_token_here'")
-        
-        # Предлагаем ввести токен
-        try:
-            token = input("Введите токен бота: ").strip()
-            if not token:
-                logger.error("Токен не может быть пустым")
-                sys.exit(1)
-        except KeyboardInterrupt:
-            logger.info("Прервано пользователем")
-            sys.exit(0)
-    
+        print("❌ Не найден BOT_TOKEN в переменных окружения")
+        print("Добавьте BOT_TOKEN в файл .env")
+        sys.exit(1)
     return token
 
 def get_admin_chat_id():
-    """Получение ID чата администратора"""
-    admin_id = os.getenv('ADMIN_CHAT_ID')
-    
+    """Получение ID администратора"""
+    admin_id = os.getenv("ADMIN_CHAT_ID")
     if not admin_id:
-        logger.warning("ADMIN_CHAT_ID не найден в переменных окружения")
-        logger.info("Добавьте ADMIN_CHAT_ID в файл .env для получения уведомлений об оспариваемых долгах")
-        return None
-    
+        print("❌ Не найден ADMIN_CHAT_ID в переменных окружения")
+        print("Добавьте ADMIN_CHAT_ID в файл .env")
+        sys.exit(1)
     return admin_id
 
-def run_bot(token):
-    """Запуск бота в отдельном потоке"""
+def run_async_bot(token):
+    """Запуск асинхронного бота"""
     try:
-        from bot.main import LunchBot
+        logger.info("Запуск асинхронного Telegram бота...")
         
-        logger.info("Запуск Telegram бота...")
-        bot = LunchBot(token)
-        bot.start()
+        # Импортируем необходимые модули
+        from bot.async_db import AsyncDatabaseManager
+        from bot.async_handlers import router
+        from bot.async_scheduler import AsyncScheduler
+        from aiogram import Bot, Dispatcher
+        from aiogram.fsm.storage.memory import MemoryStorage
         
-    except KeyboardInterrupt:
-        logger.info("Бот остановлен пользователем")
+        async def start_bot():
+            # Инициализация базы данных
+            db = AsyncDatabaseManager()
+            await db.init_database()
+            logger.info("База данных инициализирована")
+            
+            # Создание бота и диспетчера
+            bot = Bot(token=token)
+            storage = MemoryStorage()
+            dp = Dispatcher(storage=storage)
+            
+            # Подключение роутера с обработчиками
+            dp.include_router(router)
+            
+            # Инициализация и запуск планировщика
+            scheduler = AsyncScheduler(db, bot)
+            await scheduler.setup_reminder_scheduler()
+            await scheduler.setup_cleanup_scheduler()
+            scheduler.start()
+            logger.info("Планировщик запущен")
+            
+            # Запуск бота
+            logger.info("🚀 Асинхронный LunchBOT запущен!")
+            
+            try:
+                await dp.start_polling(bot, skip_updates=True)
+            except KeyboardInterrupt:
+                logger.info("Получен сигнал остановки")
+            finally:
+                scheduler.stop()
+                await bot.session.close()
+        
+        # Запускаем бота
+        import asyncio
+        asyncio.run(start_bot())
+        
     except Exception as e:
-        logger.error(f"Ошибка при запуске бота: {e}")
+        logger.error(f"Ошибка при запуске асинхронного бота: {e}")
+        logger.error(f"Детали ошибки: {type(e).__name__}: {str(e)}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
 
-def run_streamlit():
-    """Запуск Streamlit админ-панели"""
+
+
+
+
+async def setup_admin_settings():
+    """Настройка параметров администратора"""
     try:
-        logger.info("Запуск Streamlit админ-панели...")
+        from bot.async_db import AsyncDatabaseManager
         
-        # Путь к файлу админ-панели
-        app_path = Path(__file__).parent / "admin_panel" / "app.py"
+        db = AsyncDatabaseManager()
+        admin_chat_id = get_admin_chat_id()
         
-        # Команда для запуска Streamlit
-        cmd = [
-            sys.executable, "-m", "streamlit", "run", str(app_path),
-            "--server.headless", "true",
-            "--server.port", "8501",
-            "--server.address", "0.0.0.0"
-        ]
+        # Устанавливаем ID администратора
+        await db.set_setting('admin_chat_id', admin_chat_id)
+        logger.info(f"Админ ID установлен: {admin_chat_id}")
         
-        # Запускаем Streamlit
-        process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-        
-        # Ждем запуска
-        time.sleep(3)
-        
-        logger.info("Streamlit админ-панель запущена на http://localhost:8501")
-        
-        # Ожидаем завершения процесса
-        process.wait()
-        
-    except KeyboardInterrupt:
-        logger.info("Streamlit остановлен пользователем")
-        if 'process' in locals():
-            process.terminate()
+        # Устанавливаем настройки по умолчанию если их нет
+        if not await db.get_setting('reminder_frequency'):
+            await db.set_setting('reminder_frequency', '1')
+        if not await db.get_setting('reminder_time'):
+            await db.set_setting('reminder_time', '17:30')
+            
     except Exception as e:
-        logger.error(f"Ошибка при запуске Streamlit: {e}")
+        logger.error(f"Ошибка настройки админа: {e}")
 
 def main():
     """Главная функция"""
-    print("🍽️ LunchBOT - Система учёта долгов за обед")
-    print("=" * 50)
+    print("🍽️ LunchBOT - Асинхронная система учёта долгов за обед")
+    print("=" * 60)
     
-    # Проверяем версию Python
+    # Проверки
     check_python_version()
-    
-    # Проверяем зависимости
     check_dependencies()
     
-    # Инициализируем базу данных (создаёт все таблицы и новые поля)
-    db = init_database()
+    # Инициализация
+    import asyncio
+    asyncio.run(init_database())
+    asyncio.run(setup_admin_settings())
     
-    # Получаем токен бота
+    # Получение токена
     token = get_bot_token()
     
-    # Получаем админ ID и сохраняем в базу
-    admin_id = get_admin_chat_id()
-    if admin_id:
-        db.set_setting('admin_chat_id', admin_id)
-        logger.info(f"Админ ID установлен: {admin_id}")
-    
-    print("\n🚀 Запуск системы...")
-    print(f"📊 Админ-панель: http://localhost:8501")
-    print(f"🤖 Telegram бот: запущен")
+    print("\n🚀 Запуск асинхронной системы...")
+    print("📊 Админ-панель: http://localhost:8501")
+    print("🤖 Асинхронный Telegram бот: запущен")
     print("\n⚡ Для остановки нажмите Ctrl+C")
-    print("=" * 50)
+    print("=" * 60)
     
-    # Создаем потоки для бота и админ-панели
-    bot_thread = threading.Thread(target=run_bot, args=(token,), daemon=True)
-    streamlit_thread = threading.Thread(target=run_streamlit, daemon=True)
+    # Запускаем админ-панель в фоне
+    import subprocess
+    import time
     
+    # Путь к файлу админ-панели
+    app_path = Path(__file__).parent / "admin_panel" / "app.py"
+    
+    # Команда для запуска Streamlit
+    cmd = [
+        sys.executable, "-m", "streamlit", "run", str(app_path),
+        "--server.headless", "true",
+        "--server.port", "8501",
+        "--server.address", "0.0.0.0"
+    ]
+    
+    # Запускаем Streamlit в фоне
+    streamlit_process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    
+    # Ждем запуска
+    time.sleep(3)
+    logger.info("Streamlit админ-панель запущена на http://localhost:8501")
+    
+    # Запускаем бота в главном потоке
     try:
-        # Запускаем потоки
-        bot_thread.start()
-        streamlit_thread.start()
-        
-        # Ожидаем завершения
-        while bot_thread.is_alive() or streamlit_thread.is_alive():
-            time.sleep(1)
-            
+        run_async_bot(token)
     except KeyboardInterrupt:
-        logger.info("Получен сигнал остановки")
         print("\n🛑 Остановка системы...")
-        
-    except Exception as e:
-        logger.error(f"Неожиданная ошибка: {e}")
-        
-    finally:
-        logger.info("Система остановлена")
-        print("✅ Система остановлена")
+        if streamlit_process:
+            streamlit_process.terminate()
+        sys.exit(0)
 
 if __name__ == "__main__":
     main() 

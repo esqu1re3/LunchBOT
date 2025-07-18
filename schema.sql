@@ -50,6 +50,7 @@ CREATE TABLE IF NOT EXISTS payments (
     cancel_reason TEXT,               -- Причина отмены подтверждения
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     confirmed_at TIMESTAMP,           -- Дата подтверждения
+    cancelled_at TIMESTAMP,           -- Дата отмены
     FOREIGN KEY (debt_id) REFERENCES debts (id),
     FOREIGN KEY (debtor_id) REFERENCES users (user_id),
     FOREIGN KEY (creditor_id) REFERENCES users (user_id)

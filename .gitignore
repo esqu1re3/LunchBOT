@@ -122,3 +122,5 @@ Desktop.ini
 venv/
 
 __pycache__/
+
+.cursor/
