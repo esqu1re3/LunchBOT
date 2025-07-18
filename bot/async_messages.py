@@ -14,10 +14,10 @@ def format_debt_list(debts):
         return "Нет активных долгов"
     lines = []
     for d in debts:
-        creditor = d.get('creditor_name') or d.get('creditor_username') or f"User {d.get('creditor_id')}"
+        debtor = d.get('debtor_name') or d.get('debtor_username') or f"User {d.get('debtor_id')}"
         description = d.get('description') or "без описания"
         created = format_datetime(d.get('created_at'))
-        lines.append(f"• {creditor}: {d['amount']:.2f} сом ({description})\n  📅 {created}")
+        lines.append(f"• {debtor}: {d['amount']:.2f} сом ({description})\n  📅 {created}")
     return '\n'.join(lines)
 
 def format_datetime(dt_string):
