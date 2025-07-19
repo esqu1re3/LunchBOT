@@ -16,7 +16,7 @@ python-dateutil==2.8.2
 colorlog==6.7.0
 
 # Для работы с переменными окружения
-python-dotenv==1.0.0
+python-dotenv==1.1.1
 
 # Для валидации данных
 pydantic==2.5.0
