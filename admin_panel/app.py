@@ -275,7 +275,8 @@ async def show_debts(users: List[Dict], debts: List[Dict]):
                 # Инициализация session_state
                 if 'selected_debtor' not in st.session_state or st.session_state['selected_debtor'] not in user_names:
                     st.session_state['selected_debtor'] = user_names[0]
-                if 'selected_creditor' not in st.session_state or st.session_state['selected_creditor'] not in user_names:
+                if ('selected_creditor' not in st.session_state or 
+                    st.session_state['selected_creditor'] not in user_names):
                     st.session_state['selected_creditor'] = user_names[1] if len(user_names) > 1 else user_names[0]
                 col1, col2 = st.columns(2)
                 with col1:
@@ -283,7 +284,8 @@ async def show_debts(users: List[Dict], debts: List[Dict]):
                         "Должник",
                         user_names,
                         key="debtor_select",
-                        index=user_names.index(st.session_state['selected_debtor']) if st.session_state['selected_debtor'] in user_names else 0
+                        index=(user_names.index(st.session_state['selected_debtor']) 
+                               if st.session_state['selected_debtor'] in user_names else 0)
                     )
                     st.session_state['selected_debtor'] = selected_debtor
                     debtor_id = user_options[selected_debtor]
@@ -292,7 +294,8 @@ async def show_debts(users: List[Dict], debts: List[Dict]):
                         "Кредитор",
                         user_names,
                         key="creditor_select",
-                        index=user_names.index(st.session_state['selected_creditor']) if st.session_state['selected_creditor'] in user_names else 0
+                        index=(user_names.index(st.session_state['selected_creditor']) 
+                               if st.session_state['selected_creditor'] in user_names else 0)
                     )
                     st.session_state['selected_creditor'] = selected_creditor
                     creditor_id = user_options[selected_creditor]
@@ -375,7 +378,11 @@ async def show_users(users: List[Dict], debts: List[Dict]):
                     st.write(f"**Создан:** {format_datetime(user['created_at'])}")
                     st.write(f"**Активирован:** {format_datetime(user['activated_at'])}")
                     # Toggle для активации/деактивации
-                    active = st.toggle("Активен (можно назначать долги)", value=bool(user['is_active']), key=f"toggle_active_{user['user_id']}")
+                    active = st.toggle(
+                        "Активен (можно назначать долги)", 
+                        value=bool(user['is_active']), 
+                        key=f"toggle_active_{user['user_id']}"
+                    )
                     if active != bool(user['is_active']):
                         db = get_async_db()
                         if await db.set_user_active(user['user_id'], int(active)):
@@ -410,7 +417,11 @@ async def show_users(users: List[Dict], debts: List[Dict]):
                         if st.form_submit_button("Сохранить"):
                             if new_first_name.strip():
                                 db = get_async_db()
-                                if await db.update_user_name(user['user_id'], new_first_name.strip(), new_last_name.strip() or None):
+                                if await db.update_user_name(
+                                    user['user_id'], 
+                                    new_first_name.strip(), 
+                                    new_last_name.strip() or None
+                                ):
                                     st.success("Имя обновлено!")
                                     st.rerun()
                                 else:
@@ -465,7 +476,7 @@ async def show_settings():
             # Парсим время
             try:
                 time_obj = datetime.strptime(current_time, '%H:%M').time()
-            except:
+            except ValueError:
                 time_obj = datetime.strptime('17:30', '%H:%M').time()
             
             reminder_time = st.time_input(
@@ -510,7 +521,8 @@ async def show_settings():
     bot_url = "https://t.me/MealLunchBot"
     
     st.info(f"**Ссылка на бота:** {bot_url}")
-    st.write("Отправьте эту ссылку участникам команды. При переходе по ссылке и нажатии /start пользователи автоматически подключатся к боту.")
+    st.write("Отправьте эту ссылку участникам команды. При переходе по ссылке и нажатии /start "
+             "пользователи автоматически подключатся к боту.")
     
     # Кнопка для копирования
     st.code(bot_url, language="text")

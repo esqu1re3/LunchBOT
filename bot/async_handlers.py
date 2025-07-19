@@ -5,8 +5,7 @@ from aiogram import Router, F
 from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import Message, CallbackQuery, FSInputFile
-from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.types import Message, CallbackQuery
 
 from .async_db import AsyncDatabaseManager
 from .async_keyboards import (
@@ -130,9 +129,6 @@ class PayDebtStates(StatesGroup):
 
 class CancelPaymentStates(StatesGroup):
     entering_cancel_reason = State()
-
-# Состояния пользователей (временное хранилище)
-user_states = {}
 
 # Простой кэш для предотвращения дублирования действий
 user_action_cache = {}

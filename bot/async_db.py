@@ -752,35 +752,7 @@ class AsyncDatabaseManager:
             logger.error(f"Ошибка обновления времени напоминания: {e}")
             return False
     
-    async def get_user_debts(self, user_id: int) -> List[Dict[str, Any]]:
-        """
-        Получить долги пользователя (где он должник)
-        
-        Args:
-            user_id: ID пользователя
-            
-        Returns:
-            Список долгов пользователя
-        """
-        try:
-            async with aiosqlite.connect(self.db_path) as db:
-                db.row_factory = aiosqlite.Row
-                async with db.execute(
-                    """SELECT d.*, 
-                           u1.first_name as debtor_name, u1.username as debtor_username,
-                           u2.first_name as creditor_name, u2.username as creditor_username
-                       FROM debts d
-                       JOIN users u1 ON d.debtor_id = u1.user_id
-                       JOIN users u2 ON d.creditor_id = u2.user_id
-                       WHERE d.debtor_id = ? AND d.status = 'Open'
-                       ORDER BY d.created_at DESC""",
-                    (user_id,)
-                ) as cursor:
-                    rows = await cursor.fetchall()
-                    return [dict(row) for row in rows]
-        except Exception as e:
-            logger.error(f"Ошибка получения долгов пользователя: {e}")
-            return []
+
     
     async def get_activation_links(self) -> List[Dict[str, Any]]:
         """
