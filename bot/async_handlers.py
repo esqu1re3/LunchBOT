@@ -419,7 +419,7 @@ async def handle_user_selection(call: CallbackQuery, state: FSMContext):
         return
     
     await state.update_data(debtor_id=user_id, debtor_name=user['first_name'] or user['username'])
-    await safe_edit_message(call.message, f"💰 Введите сумму долга для {user['first_name'] or user['username']}:")
+    await safe_edit_message(call.message, f"💰 Введите сумму долга для {user['first_name'] or user['username']} (Например: 500 или 100.49):")
     await state.set_state(CreateDebtStates.entering_amount)
     await call.answer()
 
@@ -464,7 +464,7 @@ async def handle_description_input(message: Message, state: FSMContext):
     
     keyboard = await get_receipt_upload_keyboard()
     receipt_msg = await message.answer(
-        "📸 Отправьте фото или документ чека:\n\n"
+        "📸 Отправьте фото или файл чека:\n\n"
         "✅ Допустимые форматы: JPG, JPEG, PNG, PDF\n\n"
         "Если у вас нет чека, нажмите 'Пропустить'",
         reply_markup=keyboard
@@ -651,7 +651,7 @@ async def handle_pay_debt(call: CallbackQuery, state: FSMContext):
     keyboard = await get_cancel_keyboard()
     await safe_edit_message(
         call.message,
-        "📸 Отправьте фото или документ чека об оплате:\n\n"
+        "📸 Отправьте фото или файл чека об оплате:\n\n"
         "✅ Допустимые форматы: JPG, JPEG, PNG, PDF",
         keyboard
     )
@@ -693,7 +693,7 @@ async def handle_pay_all_debts(call: CallbackQuery, state: FSMContext):
     
     await safe_edit_message(
         call.message,
-        f"💳 Отправьте фото или документ чека для оплаты всех долгов\n\n"
+        f"💳 Отправьте фото или файл чека для оплаты всех долгов\n\n"
         f"✅ Допустимые форматы: JPG, JPEG, PNG, PDF\n\n"
         f"💰 Общая сумма: {total_amount:.2f} сом\n\n"
         f"📋 Список кредиторов:\n{creditors_text}",
