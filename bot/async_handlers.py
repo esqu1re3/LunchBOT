@@ -248,6 +248,9 @@ async def handle_cancel(call: CallbackQuery, state: FSMContext):
     data = await state.get_data()
     message_ids = data.get('message_ids', [])
     
+    # Добавляем ID текущего сообщения для удаления
+    message_ids.append(call.message.message_id)
+    
     # Удаляем все сообщения процесса
     if message_ids:
         await cleanup_messages(call.bot, call.message.chat.id, message_ids)
@@ -255,7 +258,8 @@ async def handle_cancel(call: CallbackQuery, state: FSMContext):
     await state.clear()
     keyboard = await get_main_menu_keyboard()
     
-    await safe_edit_message(call.message, "❌ Операция отменена\n\nВыберите действие:", reply_markup=keyboard)
+    # Отправляем новое сообщение вместо редактирования
+    await call.message.answer("❌ Операция отменена\n\nВыберите действие:", reply_markup=keyboard)
     await call.answer()
 
 @router.callback_query(F.data == "skip_receipt")
@@ -493,11 +497,22 @@ async def handle_receipt_document(message: Message, state: FSMContext):
     
     # Проверяем формат файла
     if not is_valid_file_format(document.file_name):
-        await message.answer(
+        data = await state.get_data()
+        message_ids = data.get('message_ids', [])
+        
+        # Добавляем ID сообщения с документом для удаления
+        message_ids.append(message.message_id)
+        
+        # Отправляем сообщение об ошибке и сохраняем его ID
+        error_msg = await message.answer(
             "❌ Неверный формат файла!\n\n"
             "Допустимые форматы: JPG, JPEG, PNG, PDF\n"
             "Пожалуйста, отправьте файл в одном из этих форматов."
         )
+        
+        # Добавляем ID сообщения с ошибкой для удаления
+        message_ids.append(error_msg.message_id)
+        await state.update_data(message_ids=message_ids)
         return
     
     file_id = document.file_id
@@ -513,11 +528,22 @@ async def handle_receipt_document(message: Message, state: FSMContext):
 @router.message(StateFilter(CreateDebtStates.uploading_receipt))
 async def handle_no_receipt(message: Message, state: FSMContext):
     """Обработка неподходящих сообщений при загрузке чека"""
-    await message.answer(
+    data = await state.get_data()
+    message_ids = data.get('message_ids', [])
+    
+    # Добавляем ID сообщения пользователя для удаления
+    message_ids.append(message.message_id)
+    
+    # Отправляем просьбу отправить чек и сохраняем его ID
+    prompt_msg = await message.answer(
         "❌ Пожалуйста, отправьте фото или документ чека!\n\n"
         "✅ Допустимые форматы: JPG, JPEG, PNG, PDF\n\n"
         "Если у вас нет чека, нажмите кнопку 'Пропустить' ниже."
     )
+    
+    # Добавляем ID сообщения с просьбой для удаления
+    message_ids.append(prompt_msg.message_id)
+    await state.update_data(message_ids=message_ids)
 
 async def create_debt_final(message: Message, state: FSMContext):
     """Финальное создание долга"""
@@ -695,11 +721,22 @@ async def handle_payment_receipt_document(message: Message, state: FSMContext):
     
     # Проверяем формат файла
     if not is_valid_file_format(document.file_name):
-        await message.answer(
+        data = await state.get_data()
+        message_ids = data.get('message_ids', [])
+        
+        # Добавляем ID сообщения с документом для удаления
+        message_ids.append(message.message_id)
+        
+        # Отправляем сообщение об ошибке и сохраняем его ID
+        error_msg = await message.answer(
             "❌ Неверный формат файла!\n\n"
             "Допустимые форматы: JPG, JPEG, PNG, PDF\n"
             "Пожалуйста, отправьте файл в одном из этих форматов."
         )
+        
+        # Добавляем ID сообщения с ошибкой для удаления
+        message_ids.append(error_msg.message_id)
+        await state.update_data(message_ids=message_ids)
         return
     
     data = await state.get_data()
@@ -880,10 +917,21 @@ async def process_payment_receipt(message: Message, state: FSMContext, file_id: 
 @router.message(StateFilter(PayDebtStates.uploading_receipt))
 async def handle_payment_no_receipt(message: Message, state: FSMContext):
     """Обработка текста вместо фото в процессе оплаты"""
-    await message.answer(
+    data = await state.get_data()
+    message_ids = data.get('message_ids', [])
+    
+    # Добавляем ID сообщения пользователя для удаления
+    message_ids.append(message.message_id)
+    
+    # Отправляем просьбу отправить чек и сохраняем его ID
+    prompt_msg = await message.answer(
         "📸 Пожалуйста, отправьте фото или документ чека об оплате\n\n"
         "✅ Допустимые форматы: JPG, JPEG, PNG, PDF"
     )
+    
+    # Добавляем ID сообщения с просьбой для удаления
+    message_ids.append(prompt_msg.message_id)
+    await state.update_data(message_ids=message_ids)
 
 # === ПОДТВЕРЖДЕНИЕ ПЛАТЕЖЕЙ ===
 
