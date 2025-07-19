@@ -276,6 +276,10 @@ async def handle_skip_receipt(call: CallbackQuery, state: FSMContext):
             self.bot = bot
             self.from_user = from_user
             self.chat = chat
+        
+        async def answer(self, text, reply_markup=None):
+            """Отправка сообщения в чат"""
+            return await self.bot.send_message(self.chat.id, text, reply_markup=reply_markup)
     
     fake_message = FakeMessage(call.bot, call.from_user, call.message.chat)
     
@@ -619,10 +623,11 @@ async def handle_pay_debt(call: CallbackQuery, state: FSMContext):
     await state.update_data(debt_id=debt_id, message_ids=[call.message.message_id])
     
     keyboard = await get_cancel_keyboard()
-    await call.message.edit_text(
+    await safe_edit_message(
+        call.message,
         "📸 Отправьте фото или документ чека об оплате:\n\n"
         "✅ Допустимые форматы: JPG, JPEG, PNG, PDF",
-        reply_markup=keyboard
+        keyboard
     )
     await state.set_state(PayDebtStates.uploading_receipt)
     await call.answer()
@@ -636,7 +641,7 @@ async def handle_pay_all_debts(call: CallbackQuery, state: FSMContext):
     
     if not debts:
         keyboard = await get_main_menu_keyboard()
-        await call.message.edit_text("✅ У вас нет активных долгов!", reply_markup=keyboard)
+        await safe_edit_message(call.message, "✅ У вас нет активных долгов!", keyboard)
         return
     
     total_amount = sum(d['amount'] for d in debts)
@@ -660,12 +665,13 @@ async def handle_pay_all_debts(call: CallbackQuery, state: FSMContext):
     
     creditors_text = "\n".join(creditors_info)
     
-    await call.message.edit_text(
+    await safe_edit_message(
+        call.message,
         f"💳 Отправьте фото или документ чека для оплаты всех долгов\n\n"
         f"✅ Допустимые форматы: JPG, JPEG, PNG, PDF\n\n"
         f"💰 Общая сумма: {total_amount:.2f} сом\n\n"
         f"📋 Список кредиторов:\n{creditors_text}",
-        reply_markup=keyboard
+        keyboard
     )
     await state.set_state(PayDebtStates.uploading_receipt)
 
@@ -934,7 +940,7 @@ async def handle_confirm_payment(call: CallbackQuery):
             if call.message.caption:
                 await call.message.edit_caption("✅ Платеж подтвержден! Долг закрыт.")
             else:
-                await call.message.edit_text("✅ Платеж подтвержден! Долг закрыт.")
+                await safe_edit_message(call.message, "✅ Платеж подтвержден! Долг закрыт.")
             logger.info(f"Сообщение с запросом подтверждения {payment_id} отредактировано")
         except Exception as edit_error:
             logger.error(f"Не удалось отредактировать сообщение: {edit_error}")
@@ -1067,7 +1073,7 @@ async def handle_remind_later(call: CallbackQuery):
             if call.message.caption:
                 await call.message.edit_caption("⏰ Напоминание отложено на 24 часа")
             else:
-                await call.message.edit_text("⏰ Напоминание отложено на 24 часа")
+                await safe_edit_message(call.message, "⏰ Напоминание отложено на 24 часа")
             logger.info(f"Сообщение с напоминанием {debt_id} отредактировано")
         except Exception as edit_error:
             logger.error(f"Не удалось отредактировать сообщение: {edit_error}")
