@@ -649,12 +649,17 @@ async def handle_pay_debt(call: CallbackQuery, state: FSMContext):
     await state.update_data(debt_id=debt_id, message_ids=[call.message.message_id])
     
     keyboard = await get_cancel_keyboard()
-    await safe_edit_message(
-        call.message,
+    
+    # Отправляем новое сообщение с инструкцией вместо редактирования
+    instruction_message = await call.message.answer(
         "📸 Отправьте фото или файл чека об оплате:\n\n"
         "✅ Допустимые форматы: JPG, JPEG, PNG, PDF",
-        keyboard
+        reply_markup=keyboard
     )
+    
+    # Добавляем ID нового сообщения в список для удаления
+    await state.update_data(message_ids=[call.message.message_id, instruction_message.message_id])
+    
     await state.set_state(PayDebtStates.uploading_receipt)
     await call.answer()
 
@@ -667,7 +672,7 @@ async def handle_pay_all_debts(call: CallbackQuery, state: FSMContext):
     
     if not debts:
         keyboard = await get_main_menu_keyboard()
-        await safe_edit_message(call.message, "✅ У вас нет активных долгов!", keyboard)
+        await call.message.answer("✅ У вас нет активных долгов!", reply_markup=keyboard)
         return
     
     total_amount = sum(d['amount'] for d in debts)
@@ -691,14 +696,18 @@ async def handle_pay_all_debts(call: CallbackQuery, state: FSMContext):
     
     creditors_text = "\n".join(creditors_info)
     
-    await safe_edit_message(
-        call.message,
+    # Отправляем новое сообщение с инструкцией вместо редактирования
+    instruction_message = await call.message.answer(
         f"💳 Отправьте фото или файл чека для оплаты всех долгов\n\n"
         f"✅ Допустимые форматы: JPG, JPEG, PNG, PDF\n\n"
         f"💰 Общая сумма: {total_amount:.2f} сом\n\n"
         f"📋 Список кредиторов:\n{creditors_text}",
-        keyboard
+        reply_markup=keyboard
     )
+    
+    # Добавляем ID нового сообщения в список для удаления
+    await state.update_data(message_ids=[call.message.message_id, instruction_message.message_id])
+    
     await state.set_state(PayDebtStates.uploading_receipt)
 
 @router.message(StateFilter(PayDebtStates.uploading_receipt), F.photo)
