@@ -1263,12 +1263,25 @@ async def handle_show_my_qr_code(call: CallbackQuery):
         
         logger.info(f"Отправляем QR-код пользователя: user_id={call.from_user.id}, file_id={user_qr['file_id']}")
         
-        await call.message.answer_photo(
+        qr_message = await call.message.answer_photo(
             photo=user_qr['file_id'],
             caption=f"📱 Ваш QR-код\n\n"
                    f"📋 Описание: {description}\n\n"
                    f"💡 Поделитесь этим QR-кодом с другими участниками для получения платежей"
         )
+        
+        # Удаляем сообщение через 30 секунд
+        async def delete_qr_message():
+            await asyncio.sleep(30)
+            try:
+                await qr_message.delete()
+                logger.info(f"QR-код пользователя {call.from_user.id} удален через 30 секунд")
+            except Exception as e:
+                logger.warning(f"Не удалось удалить QR-код: {e}")
+        
+        # Запускаем удаление в фоне
+        asyncio.create_task(delete_qr_message())
+        
         await call.answer()
     except Exception as e:
         logger.error(f"Ошибка отправки QR-кода пользователя: {e}")
@@ -1304,13 +1317,26 @@ async def handle_show_creditor_qr(call: CallbackQuery):
         
         logger.info(f"Отправляем QR-код: file_id={creditor_qr['file_id']}, description={description}")
         
-        await call.message.answer_photo(
+        qr_message = await call.message.answer_photo(
             photo=creditor_qr['file_id'],
             caption=f"📱 QR-код {creditor_name}\n\n"
                    f"💰 Сумма к оплате: {debt['amount']:.2f} сом\n"
                    f"📋 Описание: {description}\n\n"
                    f"💡 Отсканируйте QR-код для оплаты долга"
         )
+        
+        # Удаляем сообщение через 30 секунд
+        async def delete_creditor_qr_message():
+            await asyncio.sleep(30)
+            try:
+                await qr_message.delete()
+                logger.info(f"QR-код кредитора для долга {debt_id} удален через 30 секунд")
+            except Exception as e:
+                logger.warning(f"Не удалось удалить QR-код кредитора: {e}")
+        
+        # Запускаем удаление в фоне
+        asyncio.create_task(delete_creditor_qr_message())
+        
         await call.answer()
     except Exception as e:
         logger.error(f"Ошибка отправки QR-кода: {e}")
