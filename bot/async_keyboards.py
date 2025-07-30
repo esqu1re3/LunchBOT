@@ -82,10 +82,16 @@ async def get_debts_payment_keyboard(debts):
     # Кнопки для каждого долга
     for debt in debts:
         creditor_name = debt['creditor_name'] or debt['creditor_username'] or f"User {debt['creditor_id']}"
+        
+        # Создаем две кнопки для каждого долга: оплата и QR-код
         keyboard.append([
             InlineKeyboardButton(
                 text=f"💳 {creditor_name}: {debt['amount']:.2f} сом", 
                 callback_data=f"pay_debt_{debt['id']}"
+            ),
+            InlineKeyboardButton(
+                text=f"📱 QR {creditor_name}", 
+                callback_data=f"show_creditor_qr_{debt['id']}"
             )
         ])
     
@@ -101,7 +107,7 @@ async def get_debts_payment_keyboard(debts):
     # Кнопка возврата
     keyboard.append([InlineKeyboardButton(text="🏠 Главное меню", callback_data="back_to_main")])
     
-    return InlineKeyboardMarkup(inline_keyboard=keyboard) 
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 async def get_qr_code_management_keyboard():
     """Клавиатура управления QR-кодами"""
