@@ -1159,7 +1159,30 @@ async def handle_remind_later(call: CallbackQuery):
     await db.update_reminder_sent(debt_id)
     
     keyboard = await get_main_menu_keyboard()
-    await call.message.answer("⏰ Напоминание отложено на 24 часа", reply_markup=keyboard)
+    reminder_message = await call.message.answer("⏰ Напоминание отложено на 24 часа", reply_markup=keyboard)
+    
+    # Удаляем сообщение о напоминании через 7 секунд
+    async def delete_reminder_message():
+        await asyncio.sleep(7)
+        try:
+            await reminder_message.delete()
+            logger.info(f"Сообщение о отложенном напоминании для долга {debt_id} удалено через 7 секунд")
+        except Exception as e:
+            logger.warning(f"Не удалось удалить сообщение о напоминании: {e}")
+    
+    # Удаляем исходное сообщение о долге через 7 секунд
+    async def delete_debt_message():
+        await asyncio.sleep(7)
+        try:
+            await call.message.delete()
+            logger.info(f"Исходное сообщение о долге {debt_id} удалено через 7 секунд")
+        except Exception as e:
+            logger.warning(f"Не удалось удалить исходное сообщение о долге: {e}")
+    
+    # Запускаем удаление в фоне
+    asyncio.create_task(delete_reminder_message())
+    asyncio.create_task(delete_debt_message())
+    
     await call.answer()
 
 # === ОБРАБОТЧИКИ QR-КОДОВ ===
