@@ -12,6 +12,9 @@ async def get_main_menu_keyboard():
         ],
         [
             InlineKeyboardButton(text="👥 Кто мне должен", callback_data="cmd_who_owes_me"),
+            InlineKeyboardButton(text="📱 QR-коды", callback_data="cmd_qr_codes")
+        ],
+        [
             InlineKeyboardButton(text="❓ Помощь", callback_data="cmd_help")
         ]
     ])
@@ -35,6 +38,7 @@ async def get_debt_actions_keyboard(debt_id):
     """Клавиатура действий с долгом"""
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="💳 Оплатить", callback_data=f"pay_debt_{debt_id}")],
+        [InlineKeyboardButton(text="📱 QR-код кредитора", callback_data=f"show_creditor_qr_{debt_id}")],
         [InlineKeyboardButton(text="⏰ Напомнить позже", callback_data=f"remind_later_{debt_id}")]
     ])
     return keyboard
@@ -98,3 +102,31 @@ async def get_debts_payment_keyboard(debts):
     keyboard.append([InlineKeyboardButton(text="🏠 Главное меню", callback_data="back_to_main")])
     
     return InlineKeyboardMarkup(inline_keyboard=keyboard) 
+
+async def get_qr_code_management_keyboard():
+    """Клавиатура управления QR-кодами"""
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="📱 Добавить QR-код", callback_data="add_qr_code"),
+            InlineKeyboardButton(text="🗑️ Удалить QR-код", callback_data="remove_qr_code")
+        ],
+        [
+            InlineKeyboardButton(text="👤 Мой QR-код", callback_data="show_my_qr_code"),
+            InlineKeyboardButton(text="🏠 Главное меню", callback_data="back_to_main")
+        ]
+    ])
+    return keyboard
+
+async def get_qr_code_upload_keyboard():
+    """Клавиатура для загрузки QR-кода"""
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="❌ Отмена", callback_data="cancel")]
+    ])
+    return keyboard
+
+async def get_qr_code_show_keyboard():
+    """Клавиатура для показа QR-кодов"""
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🏠 Главное меню", callback_data="back_to_main")]
+    ])
+    return keyboard 

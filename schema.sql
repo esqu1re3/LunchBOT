@@ -8,6 +8,8 @@ CREATE TABLE IF NOT EXISTS users (
     first_name TEXT,                  -- Имя пользователя
     last_name TEXT,                   -- Фамилия пользователя
     is_active BOOLEAN DEFAULT 1,      -- Активен ли пользователь
+    qr_code_file_id TEXT,            -- ID файла QR-кода в Telegram
+    qr_code_description TEXT,         -- Описание QR-кода (например, "Optima Bank")
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     activated_at TIMESTAMP            -- Когда активирован
 );

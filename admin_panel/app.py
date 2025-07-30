@@ -117,6 +117,7 @@ async def main():
         "Обзор": "overview",
         "Долги": "debts",
         "Пользователи": "users",
+        "QR-коды": "qr_codes",
         "Настройки": "settings"
     }
     page_names = list(pages.keys())
@@ -141,6 +142,8 @@ async def main():
         await show_debts(users, debts)
     elif selected_page == "Пользователи":
         await show_users(users, debts)
+    elif selected_page == "QR-коды":
+        await show_qr_codes(users)
     elif selected_page == "Настройки":
         await show_settings()
 
@@ -430,6 +433,64 @@ async def show_users(users: List[Dict], debts: List[Dict]):
                                 st.error("Имя не может быть пустым")
     else:
         st.info("Нет зарегистрированных пользователей")
+
+async def show_qr_codes(users: List[Dict]):
+    """Показать управление QR-кодами"""
+    st.header("📱 Управление QR-кодами")
+    
+    db = get_async_db()
+    
+    # Получаем всех пользователей с QR-кодами
+    users_with_qr = await db.get_users_with_qr_codes()
+    
+    if users_with_qr:
+        st.subheader("📋 Пользователи с QR-кодами")
+        
+        # Показываем пользователей с QR-кодами
+        for user in users_with_qr:
+            display_name = user['first_name'] or user['username'] or f"User {user['user_id']}"
+            description = user['qr_code_description'] or "Без описания"
+            
+            with st.expander(f"📱 {display_name} - {description}"):
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.write(f"**User ID:** {user['user_id']}")
+                    st.write(f"**Username:** @{user['username'] or 'нет'}")
+                    st.write(f"**Описание:** {description}")
+                
+                with col2:
+                    if st.button(f"Удалить QR-код", key=f"remove_qr_{user['user_id']}"):
+                        if await db.remove_user_qr_code(user['user_id']):
+                            st.success("QR-код удален!")
+                            st.rerun()
+                        else:
+                            st.error("Ошибка при удалении QR-кода")
+    else:
+        st.info("Пока никто не добавил QR-коды банков")
+    
+    st.subheader("ℹ️ Информация о QR-кодах")
+    st.write("""
+    **Как работают QR-коды в LunchBOT:**
+    
+    1. **Добавление QR-кода**: Пользователи могут добавить QR-код своего банка через бота
+    2. **Просмотр своего QR-кода**: Пользователи могут посмотреть свой QR-код с фото
+    3. **Оплата долгов**: При оплате долга должник может получить QR-код кредитора
+    4. **Управление**: Пользователи могут удалить или изменить свой QR-код
+    
+    **Поддерживаемые форматы:** JPG, JPEG, PNG
+    """)
+    
+    # Статистика
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.metric("Пользователей с QR-кодами", len(users_with_qr))
+    
+    with col2:
+        total_users = len(users)
+        qr_coverage = (len(users_with_qr) / total_users * 100) if total_users > 0 else 0
+        st.metric("Покрытие QR-кодами", f"{qr_coverage:.1f}%")
 
 async def show_settings():
     """Показать настройки системы"""

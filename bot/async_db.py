@@ -25,103 +25,51 @@ class AsyncDatabaseManager:
         self._lock = asyncio.Lock()
     
     async def init_database(self):
-        """Инициализация базы данных (создание таблиц)"""
-        async with aiosqlite.connect(self.db_path) as db:
-            # Создаем таблицы
-            await db.executescript("""
-                CREATE TABLE IF NOT EXISTS users (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    user_id INTEGER UNIQUE NOT NULL,
-                    username TEXT,
-                    first_name TEXT,
-                    last_name TEXT,
-                    is_active INTEGER DEFAULT 1,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    activated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                );
+        """
+        Инициализация базы данных
+        """
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                # Читаем схему из файла
+                with open('schema.sql', 'r', encoding='utf-8') as f:
+                    schema = f.read()
                 
-                CREATE TABLE IF NOT EXISTS activation_links (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    token TEXT UNIQUE NOT NULL,
-                    name TEXT NOT NULL,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    used_at TIMESTAMP,
-                    used_by INTEGER,
-                    FOREIGN KEY (used_by) REFERENCES users (user_id)
-                );
+                # Выполняем схему
+                await db.executescript(schema)
                 
-                CREATE TABLE IF NOT EXISTS debts (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    debtor_id INTEGER NOT NULL,
-                    creditor_id INTEGER NOT NULL,
-                    amount REAL NOT NULL,
-                    description TEXT,
-                    status TEXT DEFAULT 'Open',
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    closed_at TIMESTAMP,
-                    last_reminder TIMESTAMP,
-                    FOREIGN KEY (debtor_id) REFERENCES users (user_id),
-                    FOREIGN KEY (creditor_id) REFERENCES users (user_id)
-                );
+                # Миграция: добавляем поля QR-кодов если их нет
+                await self._migrate_qr_codes_fields(db)
                 
-                CREATE TABLE IF NOT EXISTS payments (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    debt_id INTEGER NOT NULL,
-                    debtor_id INTEGER NOT NULL,
-                    creditor_id INTEGER NOT NULL,
-                    file_id TEXT,
-                    status TEXT DEFAULT 'Pending',
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    confirmed_at TIMESTAMP,
-                    cancelled_at TIMESTAMP,
-                    cancel_reason TEXT,
-                    FOREIGN KEY (debt_id) REFERENCES debts (id),
-                    FOREIGN KEY (debtor_id) REFERENCES users (user_id),
-                    FOREIGN KEY (creditor_id) REFERENCES users (user_id)
-                );
+                await db.commit()
+                logger.info("База данных инициализирована успешно")
+        except Exception as e:
+            logger.error(f"Ошибка инициализации базы данных: {e}")
+            raise
+
+    async def _migrate_qr_codes_fields(self, db):
+        """
+        Миграция для добавления полей QR-кодов
+        
+        Args:
+            db: Соединение с базой данных
+        """
+        try:
+            # Проверяем, есть ли уже поля QR-кодов
+            async with db.execute("PRAGMA table_info(users)") as cursor:
+                columns = await cursor.fetchall()
+                column_names = [col[1] for col in columns]
                 
-                CREATE TABLE IF NOT EXISTS processed_operations (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    operation_hash TEXT UNIQUE NOT NULL,
-                    operation_type TEXT NOT NULL,
-                    user_id INTEGER NOT NULL,
-                    operation_data TEXT,
-                    result_id INTEGER,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    expires_at TIMESTAMP,
-                    FOREIGN KEY (user_id) REFERENCES users (user_id)
-                );
+                # Добавляем поля если их нет
+                if 'qr_code_file_id' not in column_names:
+                    await db.execute("ALTER TABLE users ADD COLUMN qr_code_file_id TEXT")
+                    logger.info("Добавлено поле qr_code_file_id")
                 
-                CREATE TABLE IF NOT EXISTS settings (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    key TEXT UNIQUE NOT NULL,
-                    value TEXT,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                );
-            """)
-            
-            # Создаем индексы
-            await db.executescript("""
-                CREATE INDEX IF NOT EXISTS idx_users_user_id ON users(user_id);
-                CREATE INDEX IF NOT EXISTS idx_debts_debtor ON debts(debtor_id);
-                CREATE INDEX IF NOT EXISTS idx_debts_creditor ON debts(creditor_id);
-                CREATE INDEX IF NOT EXISTS idx_debts_status ON debts(status);
-                CREATE INDEX IF NOT EXISTS idx_payments_debt_id ON payments(debt_id);
-                CREATE INDEX IF NOT EXISTS idx_activation_token ON activation_links(token);
-                CREATE INDEX IF NOT EXISTS idx_processed_operations_hash ON processed_operations(operation_hash);
-                CREATE INDEX IF NOT EXISTS idx_processed_operations_expires ON processed_operations(expires_at);
-            """)
-            
-            # Миграция: добавляем колонку cancelled_at если её нет
-            try:
-                await db.execute("ALTER TABLE payments ADD COLUMN cancelled_at TIMESTAMP")
-                logger.info("Миграция: добавлена колонка cancelled_at в таблицу payments")
-            except Exception as e:
-                # Колонка уже существует
-                logger.debug(f"Колонка cancelled_at уже существует: {e}")
-            
-            await db.commit()
-            logger.info("База данных инициализирована успешно")
+                if 'qr_code_description' not in column_names:
+                    await db.execute("ALTER TABLE users ADD COLUMN qr_code_description TEXT")
+                    logger.info("Добавлено поле qr_code_description")
+                    
+        except Exception as e:
+            logger.error(f"Ошибка миграции QR-кодов: {e}")
     
     async def get_connection(self) -> aiosqlite.Connection:
         """Получить соединение с базой данных"""
@@ -808,26 +756,150 @@ class AsyncDatabaseManager:
         """
         try:
             async with aiosqlite.connect(self.db_path) as db:
-                # Удаляем долги где пользователь должник или кредитор
+                # Удаляем все долги пользователя
                 await db.execute(
                     "DELETE FROM debts WHERE debtor_id = ? OR creditor_id = ?",
                     (user_id, user_id)
                 )
                 
-                # Удаляем платежи где пользователь должник или кредитор
+                # Удаляем все платежи пользователя
                 await db.execute(
                     "DELETE FROM payments WHERE debtor_id = ? OR creditor_id = ?",
                     (user_id, user_id)
                 )
                 
-                # Удаляем пользователя
+                # Удаляем все операции пользователя
                 await db.execute(
-                    "DELETE FROM users WHERE user_id = ?",
+                    "DELETE FROM processed_operations WHERE user_id = ?",
                     (user_id,)
                 )
+                
+                # Удаляем пользователя
+                await db.execute("DELETE FROM users WHERE user_id = ?", (user_id,))
                 
                 await db.commit()
                 return True
         except Exception as e:
-            logger.error(f"Ошибка каскадного удаления пользователя: {e}")
-            return False 
+            logger.error(f"Ошибка удаления пользователя: {e}")
+            return False
+
+    # === МЕТОДЫ ДЛЯ РАБОТЫ С QR-КОДАМИ ===
+    
+    async def set_user_qr_code(self, user_id: int, file_id: str, description: str = None) -> bool:
+        """
+        Установить QR-код банка для пользователя
+        
+        Args:
+            user_id: ID пользователя
+            file_id: ID файла QR-кода в Telegram
+            description: Описание QR-кода (например, "Optima Bank")
+            
+        Returns:
+            True если QR-код установлен успешно
+        """
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                await db.execute(
+                    "UPDATE users SET qr_code_file_id = ?, qr_code_description = ? WHERE user_id = ?",
+                    (file_id, description, user_id)
+                )
+                await db.commit()
+                return True
+        except Exception as e:
+            logger.error(f"Ошибка установки QR-кода: {e}")
+            return False
+    
+    async def get_user_qr_code(self, user_id: int) -> Optional[Dict[str, Any]]:
+        """
+        Получить QR-код пользователя
+        
+        Args:
+            user_id: ID пользователя
+            
+        Returns:
+            Данные QR-кода или None
+        """
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                db.row_factory = aiosqlite.Row
+                async with db.execute(
+                    "SELECT qr_code_file_id, qr_code_description FROM users WHERE user_id = ?",
+                    (user_id,)
+                ) as cursor:
+                    row = await cursor.fetchone()
+                    if row and row['qr_code_file_id']:
+                        return {
+                            'file_id': row['qr_code_file_id'],
+                            'description': row['qr_code_description']
+                        }
+                    return None
+        except Exception as e:
+            logger.error(f"Ошибка получения QR-кода: {e}")
+            return None
+    
+    async def remove_user_qr_code(self, user_id: int) -> bool:
+        """
+        Удалить QR-код пользователя
+        
+        Args:
+            user_id: ID пользователя
+            
+        Returns:
+            True если QR-код удален успешно
+        """
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                await db.execute(
+                    "UPDATE users SET qr_code_file_id = NULL, qr_code_description = NULL WHERE user_id = ?",
+                    (user_id,)
+                )
+                await db.commit()
+                return True
+        except Exception as e:
+            logger.error(f"Ошибка удаления QR-кода: {e}")
+            return False
+    
+    async def get_users_with_qr_codes(self) -> List[Dict[str, Any]]:
+        """
+        Получить всех пользователей с QR-кодами
+        
+        Returns:
+            Список пользователей с QR-кодами
+        """
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                db.row_factory = aiosqlite.Row
+                async with db.execute(
+                    """SELECT user_id, first_name, username, qr_code_file_id, qr_code_description 
+                       FROM users 
+                       WHERE qr_code_file_id IS NOT NULL 
+                       ORDER BY first_name, username"""
+                ) as cursor:
+                    rows = await cursor.fetchall()
+                    return [dict(row) for row in rows]
+        except Exception as e:
+            logger.error(f"Ошибка получения пользователей с QR-кодами: {e}")
+            return []
+
+    async def get_all_qr_codes(self) -> List[Dict[str, Any]]:
+        """
+        Получить все QR-коды для админ-панели
+        
+        Returns:
+            Список всех QR-кодов с информацией о пользователях
+        """
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                db.row_factory = aiosqlite.Row
+                async with db.execute(
+                    """SELECT u.user_id, u.first_name, u.username, 
+                              u.qr_code_file_id, u.qr_code_description, u.created_at
+                       FROM users u 
+                       WHERE u.qr_code_file_id IS NOT NULL 
+                       ORDER BY u.first_name, u.username"""
+                ) as cursor:
+                    rows = await cursor.fetchall()
+                    return [dict(row) for row in rows]
+        except Exception as e:
+            logger.error(f"Ошибка получения всех QR-кодов: {e}")
+            return [] 

@@ -11,7 +11,8 @@ from .async_db import AsyncDatabaseManager
 from .async_keyboards import (
     get_main_menu_keyboard, get_users_keyboard, get_debt_actions_keyboard,
     get_payment_confirmation_keyboard, get_cancel_keyboard,
-    get_back_to_main_keyboard, get_debts_payment_keyboard, get_receipt_upload_keyboard
+    get_back_to_main_keyboard, get_debts_payment_keyboard, get_receipt_upload_keyboard,
+    get_qr_code_management_keyboard, get_qr_code_upload_keyboard, get_qr_code_show_keyboard
 )
 from .async_messages import (
     format_debt_list, format_datetime, debt_created_message,
@@ -130,6 +131,10 @@ class PayDebtStates(StatesGroup):
 class CancelPaymentStates(StatesGroup):
     entering_cancel_reason = State()
 
+class QrCodeStates(StatesGroup):
+    uploading_qr_code = State()
+    entering_qr_description = State()
+
 # Простой кэш для предотвращения дублирования действий
 user_action_cache = {}
 
@@ -167,7 +172,14 @@ async def cmd_help(message: Message):
 /who_owes_me - Кто должен вам
 
 💡 Для создания долга используйте /new_debt
-💡 Для оплаты долга нажмите кнопку "💳 Оплачено" в уведомлении
+💡 Для оплаты долга нажмите кнопку "💳 Оплатить" в списке долгов
+
+📱 QR-коды банков:
+• Добавьте свой QR-код для получения платежей
+• При оплате долга получите QR-код кредитора
+• Управляйте своим QR-кодом через кнопку "📱 QR-коды"
+
+🔄 Система полностью защищена от дублирования операций
 """
     keyboard = await get_main_menu_keyboard()
     await message.answer(help_text, reply_markup=keyboard)
@@ -209,7 +221,7 @@ async def cmd_my_debts(message: Message):
     total = sum(d['amount'] for d in debts)
     debt_list = format_debt_list(debts)
     
-    response = f"📋 Ваши долги ({len(debts)}):\n\n{debt_list}\n\n💰 Итого: {total:.2f} сом\n\n💳 Выберите долг для оплаты или оплатите все сразу:"
+    response = f"📋 Ваши долги ({len(debts)}):\n\n{debt_list}\n\n�� Итого: {total:.2f} сом\n\n💳 Выберите долг для оплаты или оплатите все сразу:"
     keyboard = await get_debts_payment_keyboard(debts)
     await message.answer(response, reply_markup=keyboard)
 
@@ -241,6 +253,27 @@ async def handle_cancel(call: CallbackQuery, state: FSMContext):
     # Если мы в процессе ввода причины отмены, игнорируем отмену
     if current_state == CancelPaymentStates.entering_cancel_reason.__str__():
         await call.answer("Пожалуйста, введите причину отмены или отправьте любое сообщение для продолжения")
+        return
+    
+    # Проверяем, находимся ли мы в процессе работы с QR-кодами
+    if current_state in [QrCodeStates.uploading_qr_code.__str__(), QrCodeStates.entering_qr_description.__str__()]:
+        # Получаем ID сообщений для удаления
+        data = await state.get_data()
+        message_ids = data.get('message_ids', [])
+        
+        # Добавляем ID текущего сообщения для удаления
+        message_ids.append(call.message.message_id)
+        
+        # Удаляем все сообщения процесса
+        if message_ids:
+            await cleanup_messages(call.bot, call.message.chat.id, message_ids)
+        
+        await state.clear()
+        keyboard = await get_qr_code_management_keyboard()
+        
+        # Отправляем новое сообщение вместо редактирования
+        await call.message.answer("❌ Добавление QR-кода отменено\n\nВыберите действие:", reply_markup=keyboard)
+        await call.answer()
         return
     
     # Обычная отмена
@@ -400,7 +433,14 @@ async def handle_cmd_help(call: CallbackQuery):
 /who_owes_me - Кто должен вам
 
 💡 Для создания долга используйте /new_debt
-💡 Для оплаты долга нажмите кнопку "💳 Оплачено" в уведомлении
+💡 Для оплаты долга нажмите кнопку "💳 Оплатить" в списке долгов
+
+📱 QR-коды банков:
+• Добавьте свой QR-код для получения платежей
+• При оплате долга получите QR-код кредитора
+• Управляйте своим QR-кодом через кнопку "📱 QR-коды"
+
+🔄 Система полностью защищена от дублирования операций
 """
     keyboard = await get_main_menu_keyboard()
     
@@ -1107,7 +1147,7 @@ async def handle_cancel_reason_input(message: Message, state: FSMContext):
 
 @router.callback_query(F.data.startswith("remind_later_"))
 async def handle_remind_later(call: CallbackQuery):
-    """Отложить напоминание"""
+    """Обработка напоминания позже"""
     debt_id = int(call.data.split("_")[2])
     debt = await db.get_debt(debt_id)
     
@@ -1118,30 +1158,289 @@ async def handle_remind_later(call: CallbackQuery):
     # Обновляем время последнего напоминания
     await db.update_reminder_sent(debt_id)
     
-    # Удаляем сообщение с напоминанием
-    try:
-        await call.message.delete()
-        logger.info(f"Сообщение с напоминанием {debt_id} удалено")
-    except Exception as e:
-        logger.warning(f"Не удалось удалить сообщение: {e}")
-        # Если не удалось удалить, редактируем
-        try:
-            # Проверяем, есть ли caption (документ/фото) или text (обычное сообщение)
-            if call.message.caption:
-                await call.message.edit_caption("⏰ Напоминание отложено на 24 часа")
-            else:
-                await safe_edit_message(call.message, "⏰ Напоминание отложено на 24 часа")
-            logger.info(f"Сообщение с напоминанием {debt_id} отредактировано")
-        except Exception as edit_error:
-            logger.error(f"Не удалось отредактировать сообщение: {edit_error}")
-            # Последняя попытка - просто убираем клавиатуру
-            try:
-                await call.message.edit_reply_markup(reply_markup=None)
-                logger.info(f"Клавиатура убрана для напоминания {debt_id}")
-            except Exception as markup_error:
-                logger.error(f"Не удалось убрать клавиатуру: {markup_error}")
+    keyboard = await get_main_menu_keyboard()
+    await call.message.answer("⏰ Напоминание отложено на 24 часа", reply_markup=keyboard)
+    await call.answer()
+
+# === ОБРАБОТЧИКИ QR-КОДОВ ===
+
+@router.callback_query(F.data == "cmd_qr_codes")
+async def handle_qr_codes_menu(call: CallbackQuery):
+    """Показать меню управления QR-кодами"""
+    await call.answer()
     
-    await call.answer("⏰ Напоминание отложено")
+    keyboard = await get_qr_code_management_keyboard()
+    await call.message.answer(
+        "📱 Управление QR-кодами банков\n\n"
+        "Здесь вы можете:\n"
+        "• Добавить свой QR-код для получения платежей\n"
+        "• Удалить свой QR-код\n"
+        "• Посмотреть свой QR-код",
+        reply_markup=keyboard
+    )
+
+@router.callback_query(F.data == "add_qr_code")
+async def handle_add_qr_code(call: CallbackQuery, state: FSMContext):
+    """Начало процесса добавления QR-кода"""
+    await call.answer()
+    
+    # Проверяем, есть ли уже QR-код у пользователя
+    existing_qr = await db.get_user_qr_code(call.from_user.id)
+    if existing_qr:
+        keyboard = await get_qr_code_management_keyboard()
+        await call.message.answer(
+            f"⚠️ У вас уже есть QR-код: {existing_qr['description'] or 'Без описания'}\n\n"
+            "Сначала удалите существующий QR-код, чтобы добавить новый.",
+            reply_markup=keyboard
+        )
+        return
+    
+    # Инициализируем состояние с ID сообщений
+    await state.clear()
+    await state.update_data(message_ids=[call.message.message_id])
+    
+    keyboard = await get_qr_code_upload_keyboard()
+    instruction_message = await call.message.answer(
+        "📱 Отправьте фото QR-кода вашего банка:\n\n"
+        "✅ Допустимые форматы: JPG, JPEG, PNG\n"
+        "📋 Рекомендуется: QR-код для получения платежей",
+        reply_markup=keyboard
+    )
+    
+    # Добавляем ID нового сообщения в список для удаления
+    await state.update_data(message_ids=[call.message.message_id, instruction_message.message_id])
+    
+    await state.set_state(QrCodeStates.uploading_qr_code)
+
+@router.callback_query(F.data == "remove_qr_code")
+async def handle_remove_qr_code(call: CallbackQuery):
+    """Удаление QR-кода пользователя"""
+    await call.answer()
+    
+    existing_qr = await db.get_user_qr_code(call.from_user.id)
+    if not existing_qr:
+        keyboard = await get_qr_code_management_keyboard()
+        await call.message.answer(
+            "❌ У вас нет QR-кода для удаления",
+            reply_markup=keyboard
+        )
+        return
+    
+    # Удаляем QR-код
+    if await db.remove_user_qr_code(call.from_user.id):
+        keyboard = await get_qr_code_management_keyboard()
+        await call.message.answer(
+            "✅ QR-код успешно удален",
+            reply_markup=keyboard
+        )
+    else:
+        keyboard = await get_qr_code_management_keyboard()
+        await call.message.answer(
+            "❌ Ошибка при удалении QR-кода",
+            reply_markup=keyboard
+        )
+
+@router.callback_query(F.data == "show_my_qr_code")
+async def handle_show_my_qr_code(call: CallbackQuery):
+    """Показать свой QR-код"""
+    await call.answer()
+    
+    # Получаем QR-код пользователя
+    user_qr = await db.get_user_qr_code(call.from_user.id)
+    
+    if not user_qr:
+        keyboard = await get_qr_code_management_keyboard()
+        await call.message.answer(
+            "❌ У вас нет QR-кода\n\n"
+            "Добавьте QR-код, чтобы другие участники могли оплачивать вам долги",
+            reply_markup=keyboard
+        )
+        return
+    
+    # Отправляем QR-код пользователя с фото
+    try:
+        description = user_qr['description'] or "QR-код для оплаты"
+        
+        logger.info(f"Отправляем QR-код пользователя: user_id={call.from_user.id}, file_id={user_qr['file_id']}")
+        
+        await call.message.answer_photo(
+            photo=user_qr['file_id'],
+            caption=f"📱 Ваш QR-код\n\n"
+                   f"📋 Описание: {description}\n\n"
+                   f"💡 Поделитесь этим QR-кодом с другими участниками для получения платежей"
+        )
+        await call.answer()
+    except Exception as e:
+        logger.error(f"Ошибка отправки QR-кода пользователя: {e}")
+        await call.answer("❌ Ошибка при отправке QR-кода")
+
+@router.callback_query(F.data.startswith("show_creditor_qr_"))
+async def handle_show_creditor_qr(call: CallbackQuery):
+    """Показать QR-код кредитора для оплаты долга"""
+    debt_id = int(call.data.split("_")[3])
+    debt = await db.get_debt(debt_id)
+    
+    if not debt or debt['debtor_id'] != call.from_user.id:
+        await call.answer("❌ Долг не найден")
+        return
+    
+    # Получаем QR-код кредитора
+    creditor_qr = await db.get_user_qr_code(debt['creditor_id'])
+    
+    if not creditor_qr:
+        creditor_name = debt['creditor_name'] or debt['creditor_username'] or f"User {debt['creditor_id']}"
+        keyboard = await get_debt_actions_keyboard(debt_id)
+        await call.message.answer(
+            f"❌ У {creditor_name} нет QR-кода для оплаты\n\n"
+            f"Свяжитесь с кредитором для получения реквизитов",
+            reply_markup=keyboard
+        )
+        return
+    
+    # Отправляем QR-код кредитора
+    try:
+        creditor_name = debt['creditor_name'] or debt['creditor_username'] or f"User {debt['creditor_id']}"
+        description = creditor_qr['description'] or "QR-код для оплаты"
+        
+        logger.info(f"Отправляем QR-код: file_id={creditor_qr['file_id']}, description={description}")
+        
+        await call.message.answer_photo(
+            photo=creditor_qr['file_id'],
+            caption=f"📱 QR-код {creditor_name}\n\n"
+                   f"💰 Сумма к оплате: {debt['amount']:.2f} сом\n"
+                   f"📋 Описание: {description}\n\n"
+                   f"💡 Отсканируйте QR-код для оплаты долга"
+        )
+        await call.answer()
+    except Exception as e:
+        logger.error(f"Ошибка отправки QR-кода: {e}")
+        await call.answer("❌ Ошибка при отправке QR-кода")
+
+@router.message(StateFilter(QrCodeStates.uploading_qr_code), F.photo)
+async def handle_qr_code_upload(message: Message, state: FSMContext):
+    """Обработка загрузки QR-кода (фото)"""
+    file_id = message.photo[-1].file_id
+    
+    logger.info(f"Получен QR-код (фото): user_id={message.from_user.id}, file_id={file_id}")
+    
+    # Сохраняем file_id в состоянии
+    await state.update_data(qr_file_id=file_id)
+    
+    # Добавляем ID сообщения с фото для удаления
+    data = await state.get_data()
+    message_ids = data.get('message_ids', [])
+    message_ids.append(message.message_id)
+    await state.update_data(message_ids=message_ids)
+    
+    keyboard = await get_cancel_keyboard()
+    desc_message = await message.answer(
+        "📝 Введите описание QR-кода (например, 'Optima Bank'):\n\n"
+        "💡 Это поможет другим участникам понять, какой банк использовать",
+        reply_markup=keyboard
+    )
+    
+    # Добавляем ID сообщения с описанием для удаления
+    message_ids.append(desc_message.message_id)
+    await state.update_data(message_ids=message_ids)
+    
+    await state.set_state(QrCodeStates.entering_qr_description)
+
+@router.message(StateFilter(QrCodeStates.uploading_qr_code), F.document)
+async def handle_qr_code_document(message: Message, state: FSMContext):
+    """Обработка загрузки QR-кода (документ)"""
+    document = message.document
+    
+    if not is_valid_file_format(document.file_name):
+        keyboard = await get_qr_code_upload_keyboard()
+        await message.answer(
+            "❌ Неподдерживаемый формат файла!\n\n"
+            "✅ Допустимые форматы: JPG, JPEG, PNG",
+            reply_markup=keyboard
+        )
+        return
+    
+    # Сохраняем file_id в состоянии
+    await state.update_data(qr_file_id=document.file_id)
+    
+    # Добавляем ID сообщения с документом для удаления
+    data = await state.get_data()
+    message_ids = data.get('message_ids', [])
+    message_ids.append(message.message_id)
+    await state.update_data(message_ids=message_ids)
+    
+    keyboard = await get_cancel_keyboard()
+    desc_message = await message.answer(
+        "📝 Введите описание QR-кода (например, 'Optima Bank'):\n\n"
+        "💡 Это поможет другим участникам понять, какой банк использовать",
+        reply_markup=keyboard
+    )
+    
+    # Добавляем ID сообщения с описанием для удаления
+    message_ids.append(desc_message.message_id)
+    await state.update_data(message_ids=message_ids)
+    
+    await state.set_state(QrCodeStates.entering_qr_description)
+
+@router.message(StateFilter(QrCodeStates.uploading_qr_code))
+async def handle_qr_code_invalid(message: Message, state: FSMContext):
+    """Обработка неверного формата QR-кода"""
+    keyboard = await get_qr_code_upload_keyboard()
+    await message.answer(
+        "❌ Пожалуйста, отправьте фото QR-кода!\n\n"
+        "✅ Допустимые форматы: JPG, JPEG, PNG",
+        reply_markup=keyboard
+    )
+
+@router.message(StateFilter(QrCodeStates.entering_qr_description))
+async def handle_qr_description_input(message: Message, state: FSMContext):
+    """Обработка ввода описания QR-кода"""
+    data = await state.get_data()
+    qr_file_id = data.get('qr_file_id')
+    message_ids = data.get('message_ids', [])
+    
+    if not qr_file_id:
+        keyboard = await get_qr_code_management_keyboard()
+        await message.answer(
+            "❌ Ошибка: QR-код не найден. Попробуйте загрузить снова.",
+            reply_markup=keyboard
+        )
+        await state.clear()
+        return
+    
+    # Добавляем ID сообщения с описанием для удаления
+    message_ids.append(message.message_id)
+    
+    description = message.text.strip()
+    
+    logger.info(f"Сохраняем QR-код: user_id={message.from_user.id}, file_id={qr_file_id}, description={description}")
+    
+    # Сохраняем QR-код в базу данных
+    if await db.set_user_qr_code(message.from_user.id, qr_file_id, description):
+        logger.info(f"QR-код успешно сохранен для пользователя {message.from_user.id}")
+        
+        # Очищаем сообщения
+        await cleanup_messages(message.bot, message.chat.id, message_ids)
+        
+        keyboard = await get_qr_code_management_keyboard()
+        success_message = await message.answer(
+            f"✅ QR-код успешно добавлен!\n\n"
+            f"📝 Описание: {description}\n"
+            f"👥 Теперь другие участники смогут использовать ваш QR-код для оплаты долгов",
+            reply_markup=keyboard
+        )
+    else:
+        logger.error(f"Ошибка сохранения QR-кода для пользователя {message.from_user.id}")
+        
+        # Очищаем сообщения
+        await cleanup_messages(message.bot, message.chat.id, message_ids)
+        
+        keyboard = await get_qr_code_management_keyboard()
+        await message.answer(
+            "❌ Ошибка при сохранении QR-кода. Попробуйте еще раз.",
+            reply_markup=keyboard
+        )
+    
+    await state.clear()
 
 # === ОБРАБОТКА ФАЙЛОВ ===
 
