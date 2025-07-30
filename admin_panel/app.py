@@ -6,12 +6,15 @@ import pandas as pd
 import os
 import sys
 import asyncio
+import requests
+import io
 from datetime import datetime
 from typing import List, Dict, Any
 from dotenv import load_dotenv
 from st_cookies_manager import EncryptedCookieManager
 import pytz
 import logging
+from PIL import Image
 
 # Загрузка переменных окружения
 load_dotenv()
@@ -34,6 +37,35 @@ st.set_page_config(
 def get_async_db():
     """Получить экземпляр асинхронной базы данных"""
     return AsyncDatabaseManager()
+
+def load_telegram_image(file_id: str, bot_token: str):
+    """Загрузить изображение из Telegram по file_id"""
+    try:
+        # Получаем информацию о файле
+        file_info_url = f"https://api.telegram.org/bot{bot_token}/getFile?file_id={file_id}"
+        response = requests.get(file_info_url)
+        if response.status_code != 200:
+            return None
+        
+        file_info = response.json()
+        if not file_info.get('ok'):
+            return None
+        
+        file_path = file_info['result']['file_path']
+        
+        # Загружаем файл
+        file_url = f"https://api.telegram.org/file/bot{bot_token}/{file_path}"
+        image_response = requests.get(file_url)
+        if image_response.status_code != 200:
+            return None
+        
+        # Конвертируем в PIL Image
+        image = Image.open(io.BytesIO(image_response.content))
+        return image
+        
+    except Exception as e:
+        st.error(f"Ошибка загрузки изображения: {e}")
+        return None
 
 async def get_db_data():
     """Получить данные из асинхронной БД"""
@@ -452,7 +484,7 @@ async def show_qr_codes(users: List[Dict]):
             description = user['qr_code_description'] or "Без описания"
             
             with st.expander(f"📱 {display_name} - {description}"):
-                col1, col2 = st.columns(2)
+                col1, col2, col3 = st.columns([2, 1, 1])
                 
                 with col1:
                     st.write(f"**User ID:** {user['user_id']}")
@@ -460,6 +492,31 @@ async def show_qr_codes(users: List[Dict]):
                     st.write(f"**Описание:** {description}")
                 
                 with col2:
+                    # Показываем QR-код
+                    st.subheader("🖼️ QR-код")
+                    try:
+                        # Получаем токен бота из переменных окружения
+                        bot_token = os.getenv('BOT_TOKEN')
+                        if bot_token:
+                            # Загружаем реальное изображение из Telegram
+                            image = load_telegram_image(user['qr_code_file_id'], bot_token)
+                            if image:
+                                st.image(image, caption=f"QR-код {display_name}", width=200)
+                                st.success("✅ QR-код загружен из Telegram")
+                            else:
+                                # Fallback на placeholder
+                                st.image(
+                                    "https://via.placeholder.com/200x200/FFFFFF/000000?text=QR+Code",
+                                    caption=f"QR-код {display_name} (не удалось загрузить)",
+                                    width=200
+                                )
+                                st.warning("⚠️ Не удалось загрузить QR-код из Telegram")
+                        else:
+                            st.error("❌ Токен бота не найден")
+                    except Exception as e:
+                        st.error(f"❌ Ошибка загрузки QR-кода: {e}")
+                
+                with col3:
                     if st.button(f"Удалить QR-код", key=f"remove_qr_{user['user_id']}"):
                         if await db.remove_user_qr_code(user['user_id']):
                             st.success("QR-код удален!")
@@ -477,6 +534,7 @@ async def show_qr_codes(users: List[Dict]):
     2. **Просмотр своего QR-кода**: Пользователи могут посмотреть свой QR-код с фото
     3. **Оплата долгов**: При оплате долга должник может получить QR-код кредитора
     4. **Управление**: Пользователи могут удалить или изменить свой QR-код
+    5. **Админ-панель**: Администратор может просматривать все QR-коды пользователей
     
     **Поддерживаемые форматы:** JPG, JPEG, PNG
     """)
