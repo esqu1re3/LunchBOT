@@ -61,6 +61,16 @@ def load_telegram_image(file_id: str, bot_token: str):
         
         # Конвертируем в PIL Image
         image = Image.open(io.BytesIO(image_response.content))
+        
+        # Улучшаем качество для QR-кодов
+        # Увеличиваем размер для лучшего отображения
+        width, height = image.size
+        new_width = max(300, width * 2)  # Минимум 300px, или в 2 раза больше
+        new_height = max(300, height * 2)
+        
+        # Используем LANCZOS для лучшего качества при увеличении
+        image = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
+        
         return image
         
     except Exception as e:
@@ -501,14 +511,20 @@ async def show_qr_codes(users: List[Dict]):
                             # Загружаем реальное изображение из Telegram
                             image = load_telegram_image(user['qr_code_file_id'], bot_token)
                             if image:
-                                st.image(image, caption=f"QR-код {display_name}", width=200)
+                                # Показываем изображение с лучшим качеством
+                                st.image(
+                                    image, 
+                                    caption=f"QR-код {display_name}",
+                                    width=400,  # Увеличиваем размер отображения
+                                    use_column_width=False  # Не растягиваем на всю колонку
+                                )
                                 st.success("✅ QR-код загружен из Telegram")
                             else:
                                 # Fallback на placeholder
                                 st.image(
-                                    "https://via.placeholder.com/200x200/FFFFFF/000000?text=QR+Code",
+                                    "https://via.placeholder.com/400x400/FFFFFF/000000?text=QR+Code",
                                     caption=f"QR-код {display_name} (не удалось загрузить)",
-                                    width=200
+                                    width=400
                                 )
                                 st.warning("⚠️ Не удалось загрузить QR-код из Telegram")
                         else:
